@@ -1,0 +1,77 @@
+[project]
+name = "umabozu"
+version = "0.1.0"
+description = "AI-powered horse racing prediction system"
+authors = [
+    { name = "Gemini CLI", email = "gemini@example.com" } # 仮の作者名
+]
+dependencies = [
+    "polars",
+    "lightgbm",
+    "scikit-learn",
+    "beautifulsoup4",
+    "httpx",
+    "optuna",
+    "sqlalchemy",
+    "pandas",
+    "ruff",
+    "requests",
+]
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" } # 仮のライセンス
+
+[tool.uv]
+requires-python = ">=3.12"
+
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"] # 'src'ディレクトリをパッケージのルートとして探す
+
+[tool.ruff]
+line-length = 88 # Blackのデフォルト
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # Pyflakes
+    "C",  # Complexity (McCabe)
+    "I",  # Isort
+    "N",  # Naming conventions
+    "B",  # Bugbear
+    "A",  # Builtin shadowing
+    "T",  # Flake8-bugbear
+    "Q",  # Flake8-quotes
+    "ANN", # Annotations
+    "ASYNC", # Asyncio
+    "C4", # Comprehensions
+    "ISC", # Implicit string concatenation
+    "PIE", # Flake8-pie
+    "PT", # Pytest
+    "RET", # Return statement
+    "SIM", # Simplify
+    "TID", # Tidy imports
+    "UP", # Pyupgrade
+    "YTT", # Pysort
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "D",   # Docstringsは後で必要に応じて追加
+    "ANN", # 型ヒントの強制は後で追加
+    "C901", # 複雑度チェックは最初は緩めに
+    "T201", # print文を許可
+    "F401", # 未使用インポートを無視 (FIXME: 後で整理)
+    "F841", # 未使用変数を無視 (FIXME: 後で整理)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"] # __init__.pyでの未使用importは許可
+"tests/*" = ["D", "ANN", "PT001", "F401"] # テストファイルではDocstringや型ヒント、pytestの特定のルールは無視
+
+[tool.ruff.lint.isort]
+known-first-party = ["umabozu"]
