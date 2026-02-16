@@ -55,10 +55,10 @@ def generate_mock_data(
         "jockey_id": jockey_ids,
         "jockey_name": [f"Jockey_{i}" for i in range(num_jockeys)],
         "birth_date": [
-            (datetime.date(1980, 1, 1) +
-             datetime.timedelta(days=random.randint(0, 365 * 10))).strftime(
-                "%Y-%m-%d"
-            )
+            (
+                datetime.date(1980, 1, 1)
+                + datetime.timedelta(days=random.randint(0, 365 * 10))
+            ).strftime("%Y-%m-%d")
             for _ in range(num_jockeys)
         ],
         "birth_place": random.choices(
@@ -66,10 +66,10 @@ def generate_mock_data(
         ),
         "belonging": random.choices(["中央", "地方", "不明"], k=num_jockeys),
         "debut_date": [
-            (datetime.date(2000, 1, 1) +
-             datetime.timedelta(days=random.randint(0, 365 * 10))).strftime(
-                "%Y-%m-%d"
-            )
+            (
+                datetime.date(2000, 1, 1)
+                + datetime.timedelta(days=random.randint(0, 365 * 10))
+            ).strftime("%Y-%m-%d")
             for _ in range(num_jockeys)
         ],
         "license_type": random.choices(["平地", "障害", "見習"], k=num_jockeys),
@@ -80,10 +80,10 @@ def generate_mock_data(
     horse_ids = [f"H{i:05d}" for i in range(num_horses)]
     sex_choices = ["牡", "牝", "セン"]
     birth_dates = [
-        (datetime.date(2018, 1, 1) +
-         datetime.timedelta(days=random.randint(0, 365 * 4))).strftime(
-            "%Y-%m-%d"
-        )
+        (
+            datetime.date(2018, 1, 1)
+            + datetime.timedelta(days=random.randint(0, 365 * 4))
+        ).strftime("%Y-%m-%d")
         for _ in range(num_horses)
     ]
     # Sire, Dam, DamSire IDs - Self-referencing and existing horses
@@ -118,10 +118,10 @@ def generate_mock_data(
     race_ids = [f"R{i:05d}" for i in range(num_races)]
     race_names = [f"Race_{i}" for i in range(num_races)]
     race_dates = [
-        (datetime.date(2023, 1, 1) +
-         datetime.timedelta(days=i * random.randint(1, 10))).strftime(
-            "%Y-%m-%d"
-        )
+        (
+            datetime.date(2023, 1, 1)
+            + datetime.timedelta(days=i * random.randint(1, 10))
+        ).strftime("%Y-%m-%d")
         for i in range(num_races)
     ]
     course_names = ["東京", "中山", "京都", "阪神"]
@@ -136,7 +136,7 @@ def generate_mock_data(
         "race_name": race_names,
         "race_date": race_dates,
         "start_time": [
-            f"{random.randint(9,17):02d}:{random.randint(0,59):02d}"
+            f"{random.randint(9, 17):02d}:{random.randint(0, 59):02d}"
             for _ in range(num_races)
         ],
         "course_name": random.choices(course_names, k=num_races),
@@ -194,9 +194,11 @@ def generate_mock_data(
             sex = horse_info["sex"]
             birth_date_str = horse_info["birth_date"]
             # Line break for E501
-            race_date_str = mock_data["races"].filter(pl.col("race_id") == race_id)[
-                "race_date"
-            ].item()
+            race_date_str = (
+                mock_data["races"]
+                .filter(pl.col("race_id") == race_id)["race_date"]
+                .item()
+            )
 
             birth_date = datetime.datetime.strptime(birth_date_str, "%Y-%m-%d").date()
             race_date = datetime.datetime.strptime(race_date_str, "%Y-%m-%d").date()

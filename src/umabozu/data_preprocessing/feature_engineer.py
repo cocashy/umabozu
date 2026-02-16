@@ -12,8 +12,7 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
     # Feature 1: 馬齢 (age)
     # Note: birth_date is YYYY-MM-DD string, race_date is YYYY-MM-DD string
     df = df.with_columns(
-        (pl.col("race_date")
-         - pl.col("horse_birth_date"))
+        (pl.col("race_date") - pl.col("horse_birth_date"))
         .dt.total_days()
         .alias("age_at_race_days")
     )
@@ -23,8 +22,7 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
 
     # Feature 2: 騎手の経験年数 (jockey_experience_years)
     df = df.with_columns(
-        (pl.col("race_date").dt.year()
-         - pl.col("debut_date").dt.year()).alias(
+        (pl.col("race_date").dt.year() - pl.col("debut_date").dt.year()).alias(
             "jockey_experience_years"
         )
     )

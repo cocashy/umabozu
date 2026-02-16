@@ -17,17 +17,14 @@ def check_db():
             conn.row_factory = sqlite3.Row  # Enable column access by name
             try:
                 r = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' "
-                    "AND name='races'"
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='races'"
                 ).fetchone()
                 logger.info(f"  Table 'races' exists: {r is not None}")
                 if r:
                     count = conn.execute("SELECT COUNT(*) FROM races").fetchone()[0]
                     logger.info(f"  Row count in 'races': {count}")
                     if count > 0:
-                        sample = conn.execute(
-                            "SELECT * FROM races LIMIT 1"
-                        ).fetchone()
+                        sample = conn.execute("SELECT * FROM races LIMIT 1").fetchone()
                         logger.info(
                             "  Sample row: %s",
                             dict(

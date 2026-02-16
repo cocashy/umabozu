@@ -16,6 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Umabozu CLI for horse racing prediction."
@@ -68,9 +69,11 @@ def main():
     app = UmabozuApp()
 
     if args.command == "update":
-        if (args.days_back and (args.start_date or args.end_date)) or (
-            args.start_date and not args.end_date
-        ) or (args.end_date and not args.start_date):
+        if (
+            (args.days_back and (args.start_date or args.end_date))
+            or (args.start_date and not args.end_date)
+            or (args.end_date and not args.start_date)
+        ):
             logger.error(
                 "Invalid arguments for update. Use either --days-back OR "
                 "--start-date and --end-date together."

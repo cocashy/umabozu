@@ -39,8 +39,9 @@ def parse_shutsubahyou_html(
         race_data["race_name"] = race_name_tag.get_text(strip=True)
 
     # Line break for E501
-    race_num_tag = soup.find("dt", class_="RaceNum") or \
-        soup.find("div", class_="RaceNum")
+    race_num_tag = soup.find("dt", class_="RaceNum") or soup.find(
+        "div", class_="RaceNum"
+    )
     if race_num_tag:
         race_data["race_number"] = int(
             re.search(r"\d+", race_num_tag.get_text(strip=True)).group()
@@ -90,8 +91,9 @@ def parse_shutsubahyou_html(
 
             # Horse Info
             # Line break for E501
-            horse_td = row.find("td", class_=re.compile(r"HorseInfo", re.I)) or \
-                row.find("span", class_=re.compile(r"Horse_?Name", re.I))
+            horse_td = row.find(
+                "td", class_=re.compile(r"HorseInfo", re.I)
+            ) or row.find("span", class_=re.compile(r"Horse_?Name", re.I))
 
             if horse_td:
                 a_tag = horse_td.find("a", href=True)
@@ -249,9 +251,7 @@ def parse_race_result_html(
         i = idx.get(key, -1)
         # Line break for E501
         return (
-            cols_list[i].get_text(strip=True)
-            if i != -1 and i < len(cols_list)
-            else ""
+            cols_list[i].get_text(strip=True) if i != -1 and i < len(cols_list) else ""
         )
 
     results_data = []
@@ -276,25 +276,15 @@ def parse_race_result_html(
             else 0
         )
 
-        horse_a = (
-            cols[idx["horse_name"]].find("a")
-            if idx["horse_name"] != -1
-            else None
-        )
+        horse_a = cols[idx["horse_name"]].find("a") if idx["horse_name"] != -1 else None
         res["horse_id"] = horse_a["href"].split("/")[-2] if horse_a else None
         res["horse_name"] = horse_a.get_text(strip=True) if horse_a else "UNKNOWN"
-        jockey_a = (
-            cols[idx["jockey"]].find("a") if idx["jockey"] != -1 else None
-        )
+        jockey_a = cols[idx["jockey"]].find("a") if idx["jockey"] != -1 else None
         res["jockey_id"] = jockey_a["href"].split("/")[-2] if jockey_a else None
         res["jockey_name"] = jockey_a.get_text(strip=True) if jockey_a else "UNKNOWN"
-        trainer_a = (
-            cols[idx["trainer"]].find("a") if idx["trainer"] != -1 else None
-        )
+        trainer_a = cols[idx["trainer"]].find("a") if idx["trainer"] != -1 else None
         res["trainer_id"] = trainer_a["href"].split("/")[-2] if trainer_a else None
-        res["trainer_name"] = (
-            trainer_a.get_text(strip=True) if trainer_a else "UNKNOWN"
-        )
+        res["trainer_name"] = trainer_a.get_text(strip=True) if trainer_a else "UNKNOWN"
         owner_a = cols[idx["owner"]].find("a") if idx["owner"] != -1 else None
         res["owner_id"] = owner_a["href"].split("/")[-2] if owner_a else None
         res["owner_name"] = owner_a.get_text(strip=True) if owner_a else "UNKNOWN"
@@ -459,6 +449,7 @@ def _find_idx_in_headers(names, header_cols):
 if __name__ == "__main__":
     # Move sys.path.insert here for script execution
     import sys
+
     sys.path.insert(
         0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
     )

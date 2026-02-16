@@ -40,9 +40,7 @@ def predict_probabilities(
 
     return pl.DataFrame(
         probabilities,
-        schema={
-            f"proba_{i}": pl.Float64 for i in range(probabilities.shape[1])
-        },
+        schema={f"proba_{i}": pl.Float64 for i in range(probabilities.shape[1])},
     )
 
 
@@ -108,9 +106,7 @@ if __name__ == "__main__":
 
     # 4. Predict
     logger.info("Predicting probabilities...")
-    probas_df = predict_probabilities(
-        dummy_model, predict_df_processed, feature_cols
-    )
+    probas_df = predict_probabilities(dummy_model, predict_df_processed, feature_cols)
 
     logger.info("\n--- Prediction Results Head ---")
     logger.info(probas_df.head())

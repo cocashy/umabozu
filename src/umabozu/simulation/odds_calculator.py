@@ -20,13 +20,8 @@ def calculate_expected_value(
     predicted probabilities and odds.
     """
     # Ensure all necessary columns are present
-    if (
-        "odds_win" not in original_df.columns
-        or "proba_0" not in probas_df.columns
-    ):
-        logger.error(
-            "Missing 'odds_win' in original_df or 'proba_0' in probas_df."
-        )
+    if "odds_win" not in original_df.columns or "proba_0" not in probas_df.columns:
+        logger.error("Missing 'odds_win' in original_df or 'proba_0' in probas_df.")
         return pl.DataFrame()
 
     # Join probabilities back to the original DataFrame
@@ -94,8 +89,7 @@ if __name__ == "__main__":
     logger.info("\n--- DataFrame with Expected Values Head ---")
     logger.info(df_with_expected_value.head())
     logger.info(
-        f"\nDataFrame with Expected Values shape: "
-        f"{df_with_expected_value.shape}"
+        f"\nDataFrame with Expected Values shape: {df_with_expected_value.shape}"
     )
 
     # Verify some expected values

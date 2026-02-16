@@ -77,9 +77,7 @@ if __name__ == "__main__":
     # Load the trained model (assuming it's already trained and saved)
     model_path = "trained_models/lgbm_model.pkl"
     if not os.path.exists(model_path):
-        logger.error(
-            f"Model not found at {model_path}. Please train a model first."
-        )
+        logger.error(f"Model not found at {model_path}. Please train a model first.")
         sys.exit(1)
     model = joblib.load(model_path)
 

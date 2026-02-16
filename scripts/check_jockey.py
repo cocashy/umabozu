@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+
 def check_jockey():
     path = "data/raw/html/jockeys/05445.html"
     if not os.path.exists(path):
@@ -37,6 +38,7 @@ def check_jockey():
             td = tr.find("td")
             if th and td:
                 logger.info(f"{th.get_text(strip=True)}: {td.get_text(strip=True)}")
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

@@ -20,8 +20,7 @@ JOCKEY_PROFILE_URL_FORMAT = f"{NETKEIBA_BASE_URL}/jockey/" + "{jockey_id}"
 # Note: shutsubahyou.html seems to be the current one for upcoming races
 # not shutuba.html or others.
 RACE_SHUTSUBAHYOU_URL_FORMAT = (
-    "https://race.netkeiba.com/race/shutuba.html"
-    "?race_id={race_id}"
+    "https://race.netkeiba.com/race/shutuba.html?race_id={race_id}"
 )
 
 # Headers to mimic a browser visit
@@ -47,9 +46,7 @@ def _fetch_html(url: str, encoding: str = "utf-8") -> str | None:
             response.encoding = encoding
             return response.text
         except requests.exceptions.RequestException as e:
-            logger.warning(
-                f"Attempt {attempt + 1} failed to fetch {url}: {e}"
-            )
+            logger.warning(f"Attempt {attempt + 1} failed to fetch {url}: {e}")
             _wait_random_time()
     logger.error(f"Failed to fetch {url} after {max_retries} attempts.")
     return None

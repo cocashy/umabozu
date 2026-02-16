@@ -129,8 +129,7 @@ def _insert_data(table_name: str, data: dict[str, Any], upsert: bool = False):
         cursor.execute(query, values + values)  # Pass values twice for UPSERT
     else:
         query = (
-            f"INSERT OR IGNORE INTO {table_name} ({columns}) "
-            f"VALUES ({placeholders})"
+            f"INSERT OR IGNORE INTO {table_name} ({columns}) VALUES ({placeholders})"
         )
         cursor.execute(query, values)
 

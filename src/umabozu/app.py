@@ -195,9 +195,7 @@ class UmabozuApp:
                 p = fetch_and_save_jockey_html(j_id)
                 if p:
                     with suppress(Exception), open(p, "rb") as f_jockey:  # SIM117
-                        insert_jockey(
-                            parse_jockey_profile_html(j_id, f_jockey.read())
-                        )
+                        insert_jockey(parse_jockey_profile_html(j_id, f_jockey.read()))
 
         # --- Prepare DataFrame ---
         # Ensure each runner dictionary has all necessary basic keys before creating DF
@@ -288,5 +286,5 @@ class UmabozuApp:
                 prob = row.get("win_probability", 0.0)
                 logger.info(
                     f"馬番: {h_num:>2} | {h_name} (人気: {h_pop}) | "
-                    f"期待値: {ev:.2f} | 単勝: {odds} | 勝率: {prob*100:.1f}%"
+                    f"期待値: {ev:.2f} | 単勝: {odds} | 勝率: {prob * 100:.1f}%"
                 )
