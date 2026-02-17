@@ -18,6 +18,9 @@ dependencies = [
     "requests",
     "ty>=0.0.17",
 ]
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" } # 仮のライセンス
 
 [project.optional-dependencies]
 dev = [
@@ -27,9 +30,6 @@ dev = [
     "types-tqdm",
     "types-webencodings",
 ]
-requires-python = ">=3.12"
-readme = "README.md"
-license = { text = "MIT" } # 仮のライセンス
 
 [tool.uv]
 # requires-python = ">=3.12"
