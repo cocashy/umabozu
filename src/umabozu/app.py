@@ -26,6 +26,7 @@ from umabozu.data_preprocessing.feature_engineer import (
 from umabozu.data_preprocessing.preprocessor import clean_data
 from umabozu.database.crud import (
     get_db_connection,
+    get_db_status,
     get_training_data,
     insert_horse,
     insert_jockey,
@@ -42,6 +43,73 @@ class UmabozuApp:
     def __init__(self):
         self.ev_threshold = 1.1
         self.min_probability = 0.13
+
+    def show_db_status(self, local=False):
+        """Display database statistics and detect missing data points."""
+        try:
+            status = get_db_status()
+            logger.info("\n--- Database Status ---")
+            logger.info(
+                f"Race Date Range: {status['race_date_min']} to "
+                f"{status['race_date_max']}"
+            )
+            logger.info(f"Total Races:    {status['race_count']:,}")
+            logger.info(f"Total Results:  {status['result_count']:,}")
+            logger.info(f"Total Horses:   {status['horse_count']:,}")
+            logger.info(f"Total Jockeys:  {status['jockey_count']:,}")
+
+            if not status["recorded_dates"]:
+                return
+
+            recorded_set = set(status["recorded_dates"])
+            start_date = date.fromisoformat(status["race_date_min"])
+            end_date = date.fromisoformat(status["race_date_max"])
+
+            missing_days = []
+            curr = start_date
+            while curr <= end_date:
+                d_str = curr.isoformat()
+                if local:
+                    # Check every single day
+                    if d_str not in recorded_set:
+                        missing_days.append(curr)
+                else:
+                    # JRA mode: Only check Sat (5) and Sun (6)
+                    if curr.weekday() in [5, 6] and d_str not in recorded_set:
+                        missing_days.append(curr)
+                curr += timedelta(days=1)
+
+            if missing_days:
+                mode_str = "Daily (Local)" if local else "Weekend (JRA)"
+                logger.warning(f"\n!!! Detected Missing Data ({mode_str} Mode) !!!")
+
+                # Group consecutive missing dates into ranges
+                ranges = []
+                if missing_days:
+                    range_start = missing_days[0]
+                    for i in range(1, len(missing_days)):
+                        # For JRA mode, "consecutive" means next expected weekend day
+                        # For simplicity, if diff > 1 in local mode OR diff > 7
+                        # in JRA mode, start new range
+                        diff = (missing_days[i] - missing_days[i - 1]).days
+                        threshold = 1 if local else 7
+                        if diff > threshold:
+                            ranges.append((range_start, missing_days[i - 1]))
+                            range_start = missing_days[i]
+                    ranges.append((range_start, missing_days[-1]))
+
+                for s, e in ranges:
+                    if s == e:
+                        logger.warning(f"  Missing: {s} ({s.strftime('%a')})")
+                    else:
+                        days_count = (e - s).days + 1
+                        logger.warning(f"  Gap: {s} to {e} ({days_count} days)")
+            else:
+                logger.info("\nNo data gaps detected in the specified mode.")
+
+        except Exception as e:
+            logger.error(f"Error retrieving database status: {e}")
+            logger.exception(e)
 
     def update_data(self, days_back=None, start_date=None, end_date=None):
         """Sync database with netkeiba data for a specific period."""
