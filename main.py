@@ -58,7 +58,7 @@ def main():
     print(f"Training on {len(train_df)} samples, Testing on {len(test_df)} samples.")
 
     # optimize=False to keep the good baseline behavior
-    model = train_model(train_df, optimize=False)
+    model = train_model(train_df, optimize=True, n_trials=20)
     save_model(model, "trained_models/lgbm_model.pkl")
     print("Model trained.")
 
