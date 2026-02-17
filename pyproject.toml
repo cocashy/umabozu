@@ -18,6 +18,15 @@ dependencies = [
     "requests",
     "ty>=0.0.17",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "types-beautifulsoup4",
+    "types-html5lib",
+    "types-requests",
+    "types-tqdm",
+    "types-webencodings",
+]
 requires-python = ">=3.12"
 readme = "README.md"
 license = { text = "MIT" } # 仮のライセンス

@@ -27,15 +27,6 @@ jobs:
     - name: Install dependencies
       run: uv sync --all-extras --dev
 
-    - name: Print Ty and BeautifulSoup versions
-      run: |
-        echo "Ty version:"
-        uv run ty version
-        echo "BeautifulSoup4 version:"
-        uv run python -c "import bs4; print(bs4.__version__)"
-        echo "Types-BeautifulSoup4 version:"
-        uv run pip list | grep types-beautifulsoup4 || echo "types-beautifulsoup4 not found or grep failed"
-
 
     - name: Run Ruff Check (Linting)
       run: uv run ruff check .
