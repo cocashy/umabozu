@@ -76,3 +76,9 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["umabozu"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = ["pytest"]
