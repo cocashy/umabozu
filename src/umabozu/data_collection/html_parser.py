@@ -112,7 +112,7 @@ def parse_shutsubahyou_html(
                             runner["jockey_id"] = j_id_match.group(1)
 
             # Weight Carried
-            weight_td = row.find("td", string=re.compile(r"^\d+\.\d+$"))
+            weight_td = row.find("td", string=re.compile(r"^\d+\.\d+$"))  # type: ignore[no-matching-overload]
             if not weight_td:
                 for td in row.find_all("td"):
                     if re.match(r"^\d+\.\d+$", td.get_text(strip=True)):
