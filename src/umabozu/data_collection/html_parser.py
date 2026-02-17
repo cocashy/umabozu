@@ -69,7 +69,6 @@ def parse_shutsubahyou_html(
     elif isinstance(soup, BeautifulSoup):
         rows = soup.find_all("tr", class_=re.compile(r"HorseList", re.I))
 
-
     if rows:
         for row in rows:
             runner = {"race_id": race_id}
@@ -229,7 +228,6 @@ def parse_race_result_html(
         # Fallback in case table is not a Tag (e.g. NavigableString).
         # Although unlikely here.
         return race_data, []
-
 
     if len(rows) < 2:
         return race_data, []
