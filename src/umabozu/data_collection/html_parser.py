@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -61,12 +62,12 @@ def parse_shutsubahyou_html(
     # 2. Parse Runners (ShutsubaTable)
     runners = []
     # Try different table selectors
-    table = soup.find("table", class_=re.compile(r"Shutsuba_?Table", re.I))
-    rows = (
-        table.find_all("tr", class_=re.compile(r"HorseList", re.I))
-        if table
-        else soup.find_all("tr", class_=re.compile(r"HorseList", re.I))
-    )
+    table_candidate = soup.find("table", class_=re.compile(r"Shutsuba_?Table", re.I))
+    rows = []
+    if isinstance(table_candidate, Tag):
+        rows = table_candidate.find_all("tr", class_=re.compile(r"HorseList", re.I))
+    elif isinstance(soup, BeautifulSoup):
+        rows = soup.find_all("tr", class_=re.compile(r"HorseList", re.I))
 
     if rows:
         for row in rows:
@@ -111,7 +112,7 @@ def parse_shutsubahyou_html(
                             runner["jockey_id"] = j_id_match.group(1)
 
             # Weight Carried
-            weight_td = row.find("td", string=re.compile(r"^\d+\.\d+$"))  # type: ignore
+            weight_td = row.find("td", string=re.compile(r"^\d+\.\d+$"))
             if not weight_td:
                 for td in row.find_all("td"):
                     if re.match(r"^\d+\.\d+$", td.get_text(strip=True)):
@@ -220,7 +221,14 @@ def parse_race_result_html(
     if not table:
         return race_data, []
 
-    rows = table.find_all("tr")
+    rows = []
+    if isinstance(table, Tag):
+        rows = table.find_all("tr")
+    else:
+        # Fallback in case table is not a Tag (e.g. NavigableString).
+        # Although unlikely here.
+        return race_data, []
+
     if len(rows) < 2:
         return race_data, []
     header_cols = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
@@ -362,7 +370,7 @@ def parse_horse_profile_html(horse_id: str, html_content: bytes) -> dict[str, An
         horse_data["horse_name"] = h1.get_text(strip=True)
 
     prof_table = soup.find("table", class_="db_prof_table")
-    if prof_table:
+    if prof_table and isinstance(prof_table, Tag):
         for tr in prof_table.find_all("tr"):
             th = tr.find("th")
             td = tr.find("td")
@@ -396,7 +404,7 @@ def parse_horse_profile_html(horse_id: str, html_content: bytes) -> dict[str, An
 
     # Bloodline
     blood_table = soup.find("table", class_="blood_table")
-    if blood_table:
+    if blood_table and isinstance(blood_table, Tag):
         tds = blood_table.find_all("td")
         if len(tds) > 0:
             a = tds[0].find("a")

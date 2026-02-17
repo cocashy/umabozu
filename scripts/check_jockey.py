@@ -2,6 +2,7 @@ import logging
 import os
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def check_jockey():
 
     # Profile table
     table = soup.find("table", class_="db_prof_table")
-    if table:
+    if table and isinstance(table, Tag):
         for tr in table.find_all("tr"):
             th = tr.find("th")
             td = tr.find("td")
