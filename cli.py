@@ -65,6 +65,16 @@ def main():
         "race_id", type=str, help="Race ID for the upcoming race to forecast"
     )
 
+    # Status command
+    status_parser = subparsers.add_parser(
+        "status", help="Show database status and date range"
+    )
+    status_parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Check for gaps every day (local racing). Default checks weekends.",
+    )
+
     args = parser.parse_args()
     app = UmabozuApp()
 
@@ -90,6 +100,8 @@ def main():
         app.predict_upcoming(target_date=args.target_date)
     elif args.command == "forecast":
         app.forecast_race(race_id=args.race_id)
+    elif args.command == "status":
+        app.show_db_status(local=args.local)
     else:
         parser.print_help()
 

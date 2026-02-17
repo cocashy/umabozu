@@ -292,3 +292,35 @@ def get_training_data():
     df = pl.read_database(query, connection=conn)
     conn.close()
     return df
+
+
+def get_db_status() -> dict[str, Any]:
+    """Retrieves statistics and date ranges from the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    status = {}
+
+    # Date range from races
+    cursor.execute("SELECT MIN(race_date), MAX(race_date), COUNT(*) FROM races")
+    min_date, max_date, race_count = cursor.fetchone()
+    status["race_date_min"] = min_date
+    status["race_date_max"] = max_date
+    status["race_count"] = race_count
+
+    # Get all unique race dates
+    cursor.execute("SELECT DISTINCT race_date FROM races ORDER BY race_date")
+    status["recorded_dates"] = [row[0] for row in cursor.fetchall()]
+
+    # Counts for other tables
+    cursor.execute("SELECT COUNT(*) FROM results")
+    status["result_count"] = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM horses")
+    status["horse_count"] = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM jockeys")
+    status["jockey_count"] = cursor.fetchone()[0]
+
+    conn.close()
+    return status
