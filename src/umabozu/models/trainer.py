@@ -7,7 +7,7 @@ import lightgbm as lgb
 import optuna
 import polars as pl
 from sklearn.metrics import log_loss
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, TimeSeriesSplit
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -61,10 +61,10 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
                 "boosting_type": "gbdt",
             }
 
-            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            tss = TimeSeriesSplit(n_splits=5)
             logloss_scores = []
 
-            for train_idx, val_idx in skf.split(x_data, y_data):
+            for train_idx, val_idx in tss.split(x_data, y_data):
                 x_train, x_val = x_data[train_idx], x_data[val_idx]
                 y_train, y_val = y_data[train_idx], y_data[val_idx]
 
@@ -149,6 +149,7 @@ if __name__ == "__main__":
     df = load_data_from_db()
     df = clean_data(df)
     df = generate_features(df)
+    df = df.sort("race_date")
 
     if df.is_empty():
         logger.error("No data available for training. Exiting.")
