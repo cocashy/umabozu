@@ -80,22 +80,31 @@ def fetch_and_save_shutsubahyou_html(
 
 def get_race_ids_by_day(target_date: date) -> list[str]:
     """Fetches race IDs for all races on a given date from Netkeiba's race list."""
-    url = (
-        f"{NETKEIBA_BASE_URL}/?pid=race_list&id=c"
-        f"&mode=all&start_date={target_date.strftime('%Y%m%d')}"
-    )
-    logger.info(f"Fetching race list from: {url}")
-    html = _fetch_html(url)
-    if not html:
-        return []
+    date_str = target_date.strftime("%Y%m%d")
+    save_dir = os.path.join("data", "raw", "html", "race_lists")
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{date_str}.html")
+
+    if os.path.exists(save_path):
+        logger.info(f"Loading race list for {target_date} from cache.")
+        with open(save_path, encoding="utf-8") as f:
+            html = f.read()
+    else:
+        url = f"{NETKEIBA_BASE_URL}/race/list/{date_str}/"
+        logger.info(f"Fetching race list from: {url}")
+        html = _fetch_html(url, encoding="euc-jp")
+        if not html:
+            return []
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        _wait_random_time()
 
     soup = BeautifulSoup(html, "html.parser")
-    race_id_links = soup.find_all("a", href=re.compile(r"^/race/\d+$"))
     race_ids = []
-    for link in race_id_links:
-        href = link.get("href")
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
         if isinstance(href, str):
-            match = re.search(r"/race/(\d+)", href)
+            match = re.search(r"/race/(\d{12})", href)
             if match:
                 race_ids.append(match.group(1))
     return list(set(race_ids))  # Return unique race IDs

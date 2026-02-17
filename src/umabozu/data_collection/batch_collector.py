@@ -19,7 +19,9 @@ from umabozu.database.crud import (
     delete_staged_race_id,
     get_db_connection,
     get_staged_race_ids,
-    insert_staged_race_id,
+    insert_horses,
+    insert_jockeys,
+    insert_staged_race_ids,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,17 +33,19 @@ def collect_races(start_date: datetime.date, end_date: datetime.date):
     while current_date <= end_date:
         logger.info(f"Collecting races for {current_date}...")
         race_ids = get_race_ids_by_day(current_date)
-        for race_id in tqdm(race_ids, desc=f"Races on {current_date}"):
-            insert_staged_race_id(race_id)
+        logger.info(f"Found {len(race_ids)} races for {current_date}.")
+        if race_ids:
+            insert_staged_race_ids(race_ids)
         current_date += datetime.timedelta(days=1)
-        time.sleep(1)  # Be polite
 
     staged_race_ids = get_staged_race_ids()
-    for race_id in tqdm(staged_race_ids, desc="Fetching race details"):
+    for i, race_id in enumerate(tqdm(staged_race_ids, desc="Fetching race details")):
         html_content = fetch_and_save_race_html(race_id)
         if html_content:
             save_parsed_data_to_db(race_id, html_content)
             delete_staged_race_id(race_id)
+        if i % 5 == 0:  # Be polite every few requests
+            time.sleep(1)
 
 
 def collect_profiles():
@@ -55,13 +59,24 @@ def collect_profiles():
         "(SELECT horse_id FROM horses WHERE horse_name != 'UNKNOWN')"
     )
     missing_horse_ids = [row[0] for row in cursor.fetchall()]
-    for horse_id in tqdm(missing_horse_ids, desc="Fetching horse profiles"):
-        html_path = fetch_and_save_horse_html(horse_id)
-        if html_path:
-            with open(html_path, "rb") as f:
-                horse_data = parse_horse_profile_html(horse_id, f.read())
-                # insert_horse(horse_data) # This is already handled by app.py
-        time.sleep(1)
+    horses_to_insert = []
+    for i, horse_id in enumerate(
+        tqdm(missing_horse_ids, desc="Fetching horse profiles")
+    ):
+        html_content = fetch_and_save_horse_html(horse_id)
+        if html_content:
+            horse_data = parse_horse_profile_html(horse_id, html_content)
+            horses_to_insert.append(horse_data)
+
+        if len(horses_to_insert) >= 20:
+            insert_horses(horses_to_insert)
+            horses_to_insert = []
+
+        if i % 10 == 0:
+            time.sleep(1)
+
+    if horses_to_insert:
+        insert_horses(horses_to_insert)
 
     # Collect missing jockey profiles
     cursor.execute(
@@ -69,12 +84,23 @@ def collect_profiles():
         "(SELECT jockey_id FROM jockeys WHERE jockey_name != 'UNKNOWN')"
     )
     missing_jockey_ids = [row[0] for row in cursor.fetchall()]
-    for jockey_id in tqdm(missing_jockey_ids, desc="Fetching jockey profiles"):
-        html_path = fetch_and_save_jockey_html(jockey_id)
-        if html_path:
-            with open(html_path, "rb") as f:
-                jockey_data = parse_jockey_profile_html(jockey_id, f.read())
-                # insert_jockey(jockey_data) # This is already handled by app.py
-        time.sleep(1)
+    jockeys_to_insert = []
+    for i, jockey_id in enumerate(
+        tqdm(missing_jockey_ids, desc="Fetching jockey profiles")
+    ):
+        html_content = fetch_and_save_jockey_html(jockey_id)
+        if html_content:
+            jockey_data = parse_jockey_profile_html(jockey_id, html_content)
+            jockeys_to_insert.append(jockey_data)
+
+        if len(jockeys_to_insert) >= 20:
+            insert_jockeys(jockeys_to_insert)
+            jockeys_to_insert = []
+
+        if i % 10 == 0:
+            time.sleep(1)
+
+    if jockeys_to_insert:
+        insert_jockeys(jockeys_to_insert)
 
     conn.close()

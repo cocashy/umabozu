@@ -329,6 +329,7 @@ def parse_race_result_html(
         elif "クビ" in diff_txt:
             res["distance_diff"] = 0.2
         else:
+            res["distance_diff"] = 0.0
             with suppress(Exception):
                 res["distance_diff"] = float(diff_txt)
 
@@ -451,19 +452,23 @@ def parse_jockey_profile_html(jockey_id: str, html_content: bytes) -> dict[str, 
 
 
 def save_parsed_data_to_db(race_id: str, html_content: bytes):
-    from umabozu.database.crud import insert_race, insert_result
+    from umabozu.database.crud import insert_race, insert_results
 
     race_data, results_data = parse_race_result_html(race_id, html_content)
     if not results_data:
         return
     insert_race(race_data)
+
+    results_to_insert = []
     for r in results_data:
         insert_data = {
             k: v
             for k, v in r.items()
             if k not in ["horse_name", "jockey_name", "trainer_name", "owner_name"]
         }
-        insert_result(insert_data)
+        results_to_insert.append(insert_data)
+
+    insert_results(results_to_insert)
     logger.info(f"Race {race_id} ({race_data['race_name']}) saved.")
 
 

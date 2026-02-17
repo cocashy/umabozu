@@ -1,9 +1,11 @@
+import logging
 import sqlite3
 from typing import Any
 
 import polars as pl
 
 DB_PATH = "data/umabozu.db"
+logger = logging.getLogger(__name__)
 
 
 def get_db_connection():
@@ -109,74 +111,84 @@ def create_tables():
     conn.close()
 
 
-def _insert_data(table_name: str, data: dict[str, Any], upsert: bool = False):
+def _insert_many_data(
+    table_name: str,
+    data_list: list[dict[str, Any]],
+    upsert: bool = False,
+    conflict_target: str = "rowid",
+):
+    """Generic bulk insert or upsert function."""
+    if not data_list:
+        return
+
+    columns = list(data_list[0].keys())
+    placeholders = ", ".join("?" * len(columns))
+    col_str = ", ".join(columns)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        if upsert:
+            update_clause = ", ".join([f"{col} = EXCLUDED.{col}" for col in columns])
+            query = f"""
+                INSERT INTO {table_name} ({col_str}) VALUES ({placeholders})
+                ON CONFLICT({conflict_target}) DO UPDATE SET {update_clause}
+            """
+        else:
+            query = (
+                f"INSERT OR IGNORE INTO {table_name} ({col_str}) "
+                f"VALUES ({placeholders})"
+            )
+
+        values = [tuple(d[col] for col in columns) for d in data_list]
+        cursor.executemany(query, values)
+        conn.commit()
+        logger.info(f"Inserted {len(data_list)} rows into {table_name}")
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def _insert_data(
+    table_name: str,
+    data: dict[str, Any],
+    upsert: bool = False,
+    conflict_target: str = "rowid",
+):
     """Generic insert or upsert function."""
     if not data:
         return
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    columns = ", ".join(data.keys())
-    placeholders = ", ".join("?" * len(data))
-    values = tuple(data.values())
-
-    if upsert:
-        update_clause = ", ".join([f"{col} = ?" for col in data])
-        query = f"""
-            INSERT INTO {table_name} ({columns}) VALUES ({placeholders})
-            ON CONFLICT(rowid) DO UPDATE SET {update_clause}
-        """
-        cursor.execute(query, values + values)  # Pass values twice for UPSERT
-    else:
-        query = (
-            f"INSERT OR IGNORE INTO {table_name} ({columns}) VALUES ({placeholders})"
-        )
-        cursor.execute(query, values)
-
-    conn.commit()
-    conn.close()
+    _insert_many_data(
+        table_name, [data], upsert=upsert, conflict_target=conflict_target
+    )
 
 
 def insert_race(data: dict[str, Any]):
-    _insert_data("races", data)
+    _insert_data("races", data, upsert=True, conflict_target="race_id")
+
+
+def insert_races(data_list: list[dict[str, Any]]):
+    _insert_many_data("races", data_list, upsert=True, conflict_target="race_id")
 
 
 def insert_horse(data: dict[str, Any]):
-    # Horses table uses PRIMARY KEY (horse_id), so ON CONFLICT (horse_id)
-    # is more appropriate than ON CONFLICT (rowid).
-    # Since horse data can be updated (e.g., owner changes), UPSERT is suitable.
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    columns = ", ".join(data.keys())
-    placeholders = ", ".join("?" * len(data))
-    values = tuple(data.values())
-    update_clause = ", ".join([f"{col} = ?" for col in data])
-    query = f"""
-        INSERT INTO horses ({columns}) VALUES ({placeholders})
-        ON CONFLICT(horse_id) DO UPDATE SET {update_clause}
-    """
-    cursor.execute(query, values + values)
-    conn.commit()
-    conn.close()
+    _insert_data("horses", data, upsert=True, conflict_target="horse_id")
+
+
+def insert_horses(data_list: list[dict[str, Any]]):
+    _insert_many_data("horses", data_list, upsert=True, conflict_target="horse_id")
 
 
 def insert_jockey(data: dict[str, Any]):
-    # Jockeys table uses PRIMARY KEY (jockey_id), so ON CONFLICT (jockey_id)
-    # is more appropriate than ON CONFLICT (rowid).
-    # Jockey data can also be updated, so UPSERT is suitable.
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    columns = ", ".join(data.keys())
-    placeholders = ", ".join("?" * len(data))
-    values = tuple(data.values())
-    update_clause = ", ".join([f"{col} = ?" for col in data])
-    query = f"""
-        INSERT INTO jockeys ({columns}) VALUES ({placeholders})
-        ON CONFLICT(jockey_id) DO UPDATE SET {update_clause}
-    """
-    cursor.execute(query, values + values)
-    conn.commit()
-    conn.close()
+    _insert_data("jockeys", data, upsert=True, conflict_target="jockey_id")
+
+
+def insert_jockeys(data_list: list[dict[str, Any]]):
+    _insert_many_data("jockeys", data_list, upsert=True, conflict_target="jockey_id")
 
 
 def insert_trainer(data: dict[str, Any]):
@@ -191,15 +203,17 @@ def insert_result(data: dict[str, Any]):
     _insert_data("results", data)
 
 
+def insert_results(data_list: list[dict[str, Any]]):
+    _insert_many_data("results", data_list)
+
+
 def insert_staged_race_id(race_id: str):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR IGNORE INTO staged_race_ids (race_id) VALUES (?)",
-        (race_id,),
-    )
-    conn.commit()
-    conn.close()
+    _insert_many_data("staged_race_ids", [{"race_id": race_id}])
+
+
+def insert_staged_race_ids(race_ids: list[str]):
+    data_list = [{"race_id": rid} for rid in race_ids]
+    _insert_many_data("staged_race_ids", data_list)
 
 
 def get_staged_race_ids() -> list[str]:
