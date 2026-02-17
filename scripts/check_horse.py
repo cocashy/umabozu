@@ -1,8 +1,13 @@
 import logging
 import os
-import re
+import sys
 
-from bs4 import BeautifulSoup
+# Add the parent directory of umabozu to the system path
+_script_dir = os.path.dirname(__file__)
+_project_root = os.path.abspath(os.path.join(_script_dir, "..", "src"))
+sys.path.insert(0, _project_root)
+
+from umabozu.data_collection.html_parser import parse_horse_profile_html  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -16,43 +21,15 @@ def check_horse():
     with open(path, "rb") as f:
         content = f.read()
 
-    text = ""
-    try:
-        text = content.decode("euc-jp")
-    except UnicodeDecodeError:
-        text = content.decode("cp932", errors="replace")
-    except Exception as e:
-        logger.error(f"Error decoding horse HTML: {e}")
-        return
-
-    soup = BeautifulSoup(text, "html.parser")
+    horse_data = parse_horse_profile_html("2020106601", content)
 
     logger.info("--- Horse Profile ---")
-    h1 = soup.find("h1")
-    logger.info(f"Name: {h1.get_text(strip=True) if h1 else 'N/A'}")
-
-    # Profile table
-    table = soup.find("table", class_="db_prof_table")
-    if table:
-        for tr in table.find_all("tr"):
-            th = tr.find("th")
-            td = tr.find("td")
-            if th and td:
-                logger.info(f"{th.get_text(strip=True)}: {td.get_text(strip=True)}")
-
-    # Bloodline table
-    blood_table = soup.find("table", class_="blood_table")
-    if blood_table:
-        logger.info("\n--- Bloodline ---")
-        # Sire, Dam, DamSire are usually in specific cells
-        tds = blood_table.find_all("td")
-        if len(tds) > 0:
-            sire_a = tds[0].find("a")
-            logger.info(
-                f"Sire: {sire_a.get_text(strip=True) if sire_a else 'N/A'} "
-                f"({sire_a['href'] if sire_a else 'N/A'})"
-            )
-        # Add more sophisticated parsing for dam and dam_sire if needed
+    logger.info(f"Name: {horse_data.get('horse_name', 'N/A')}")
+    logger.info(f"Birth Date: {horse_data.get('birth_date', 'N/A')}")
+    logger.info(f"Trainer ID: {horse_data.get('trainer_id', 'N/A')}")
+    logger.info(f"Owner ID: {horse_data.get('owner_id', 'N/A')}")
+    logger.info(f"Producer ID: {horse_data.get('producer_id', 'N/A')}")
+    logger.info(f"Sire ID: {horse_data.get('sire_id', 'N/A')}")
 
 
 if __name__ == "__main__":

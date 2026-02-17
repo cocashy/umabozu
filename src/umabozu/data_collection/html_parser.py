@@ -11,16 +11,6 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 
-def _decode_html(html_content: bytes) -> str:
-    """Helper to decode HTML with common encodings for netkeiba."""
-    for enc in ["euc-jp", "cp932", "utf-8"]:
-        try:
-            return html_content.decode(enc)
-        except UnicodeDecodeError:
-            continue
-    return html_content.decode("utf-8", errors="replace")
-
-
 def parse_shutsubahyou_html(
     race_id: str, html_content: str
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -174,7 +164,7 @@ def parse_race_result_html(
     race_id: str, html_content: bytes
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Parses race result page HTML."""
-    content_str = _decode_html(html_content).replace("charset=euc-jp", "charset=utf-8")
+    content_str = html_content.decode("euc-jp")
     soup = BeautifulSoup(content_str, "html.parser")
 
     race_data: dict[str, Any] = {"race_id": race_id}
@@ -363,11 +353,11 @@ def parse_race_result_html(
 
 def parse_horse_profile_html(horse_id: str, html_content: bytes) -> dict[str, Any]:
     """Parses horse profile page HTML."""
-    content_str = _decode_html(html_content)
+    content_str = html_content.decode("euc-jp")
     soup = BeautifulSoup(content_str, "html.parser")
 
     horse_data: dict[str, Any] = {"horse_id": horse_id}
-    h1 = soup.find("h1")
+    h1 = soup.select_one("div.horse_title h1")
     if h1:
         horse_data["horse_name"] = h1.get_text(strip=True)
 
@@ -421,7 +411,7 @@ def parse_horse_profile_html(horse_id: str, html_content: bytes) -> dict[str, An
 
 def parse_jockey_profile_html(jockey_id: str, html_content: bytes) -> dict[str, Any]:
     """Parses jockey profile page HTML."""
-    content_str = _decode_html(html_content)
+    content_str = html_content.decode("euc-jp")
     soup = BeautifulSoup(content_str, "html.parser")
 
     jockey_data: dict[str, Any] = {"jockey_id": jockey_id}
