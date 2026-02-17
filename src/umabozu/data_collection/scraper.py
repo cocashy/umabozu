@@ -93,9 +93,11 @@ def get_race_ids_by_day(target_date: date) -> list[str]:
     race_id_links = soup.find_all("a", href=re.compile(r"^/race/\d+$"))
     race_ids = []
     for link in race_id_links:
-        match = re.search(r"/race/(\d+)", link["href"])
-        if match:
-            race_ids.append(match.group(1))
+        href = link.get("href")
+        if isinstance(href, str):
+            match = re.search(r"/race/(\d+)", href)
+            if match:
+                race_ids.append(match.group(1))
     return list(set(race_ids))  # Return unique race IDs
 
 

@@ -77,15 +77,15 @@ def main():
     # Updated thresholds found via strategy optimization for best ROI
     selected_bets = simulate_betting(df_with_ev, ev_threshold=1.1, min_probability=0.13)
 
-    actual_results_df = test_df.select(["race_id", "horse_id", "rank"])
-    total_payout, roi = calculate_payout(selected_bets, actual_results_df)
+    # actual_results_df = test_df.select(["race_id", "horse_id", "rank"])
+    investment, total_payout, roi = calculate_payout(selected_bets)
 
     print("\n--- Final Simulation Results (Refined Baseline) ---")
     print(f"Number of total bets considered: {len(df_with_ev)}")
     print(f"Number of selected bets: {len(selected_bets)}")
     if not selected_bets.is_empty():
-        print(f"Total bet amount: {selected_bets['bet_amount'].sum()}")
-        print(f"Total payout: {total_payout:.2f}")
+        print(f"Total investment: {investment:.2f} JPY")
+        print(f"Total payout: {total_payout:.2f} JPY")
         print(f"Return on Investment (ROI): {roi:.2f}%")
     else:
         print("No bets were placed.")

@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import Any
 
 import joblib
 import polars as pl
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def predict_probabilities(
-    model: BaseEstimator, df: pl.DataFrame, feature_cols: list[str]
+    model: Any, df: pl.DataFrame, feature_cols: list[str]
 ) -> pl.DataFrame:
     """
     Predicts probabilities for each class (rank) using the trained model.
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     # Use a simple LightGBM model for demonstration
     import lightgbm as lgb
 
-    dummy_model = lgb.LGBMClassifier(random_state=42)
+    dummy_model = lgb.LGBMClassifier(random_state=42)  # type: ignore
     dummy_model.fit(x_train, y_train)
 
     # 4. Predict

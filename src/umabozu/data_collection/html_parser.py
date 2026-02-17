@@ -43,9 +43,9 @@ def parse_shutsubahyou_html(
         "div", class_="RaceNum"
     )
     if race_num_tag:
-        race_data["race_number"] = int(
-            re.search(r"\d+", race_num_tag.get_text(strip=True)).group()
-        )  # Extract only digits
+        num_match = re.search(r"\d+", race_num_tag.get_text(strip=True))
+        if num_match:
+            race_data["race_number"] = int(num_match.group())  # Extract only digits
 
     race_data_01 = soup.find("div", class_="RaceData01")
     if race_data_01:
@@ -99,9 +99,11 @@ def parse_shutsubahyou_html(
                 a_tag = horse_td.find("a", href=True)
                 if a_tag:
                     runner["horse_name"] = a_tag.get_text(strip=True)
-                    h_id_match = re.search(r"/horse/(\d+)", a_tag["href"])
-                    if h_id_match:
-                        runner["horse_id"] = h_id_match.group(1)
+                    href = a_tag.get("href", "")
+                    if isinstance(href, str):
+                        h_id_match = re.search(r"/horse/(\d+)", href)
+                        if h_id_match:
+                            runner["horse_id"] = h_id_match.group(1)
 
             # Jockey Info
             jockey_td = row.find("td", class_=re.compile(r"Jockey", re.I))
@@ -109,15 +111,17 @@ def parse_shutsubahyou_html(
                 a_tag = jockey_td.find("a", href=True)
                 if a_tag:
                     runner["jockey_name"] = a_tag.get_text(strip=True)
-                    # Line break for E501
-                    j_id_match = re.search(
-                        r"/jockey/(?:result/recent/)?(\d+)", a_tag["href"]
-                    )
-                    if j_id_match:
-                        runner["jockey_id"] = j_id_match.group(1)
+                    href = a_tag.get("href", "")
+                    if isinstance(href, str):
+                        # Line break for E501
+                        j_id_match = re.search(
+                            r"/jockey/(?:result/recent/)?(\d+)", href
+                        )
+                        if j_id_match:
+                            runner["jockey_id"] = j_id_match.group(1)
 
             # Weight Carried
-            weight_td = row.find("td", string=re.compile(r"^\d+\.\d+$"))
+            weight_td = row.find("td", string=re.compile(r"^\d+\.\d+$"))  # type: ignore
             if not weight_td:
                 for td in row.find_all("td"):
                     if re.match(r"^\d+\.\d+$", td.get_text(strip=True)):
@@ -126,9 +130,11 @@ def parse_shutsubahyou_html(
 
             if weight_td:
                 with suppress(Exception):
-                    runner["weight_carried"] = float(
-                        re.search(r"\d+\.\d+", weight_td.get_text(strip=True)).group()
+                    weight_match = re.search(
+                        r"\d+\.\d+", weight_td.get_text(strip=True)
                     )
+                    if weight_match:
+                        runner["weight_carried"] = float(weight_match.group())
             else:
                 runner["weight_carried"] = 55.0  # Default value
 
@@ -277,16 +283,35 @@ def parse_race_result_html(
         )
 
         horse_a = cols[idx["horse_name"]].find("a") if idx["horse_name"] != -1 else None
-        res["horse_id"] = horse_a["href"].split("/")[-2] if horse_a else None
+        horse_href = horse_a.get("href") if horse_a else None
+        if horse_a and isinstance(horse_href, str):
+            res["horse_id"] = horse_href.split("/")[-2]
+        else:
+            res["horse_id"] = None
         res["horse_name"] = horse_a.get_text(strip=True) if horse_a else "UNKNOWN"
+
         jockey_a = cols[idx["jockey"]].find("a") if idx["jockey"] != -1 else None
-        res["jockey_id"] = jockey_a["href"].split("/")[-2] if jockey_a else None
+        jockey_href = jockey_a.get("href") if jockey_a else None
+        if jockey_a and isinstance(jockey_href, str):
+            res["jockey_id"] = jockey_href.split("/")[-2]
+        else:
+            res["jockey_id"] = None
         res["jockey_name"] = jockey_a.get_text(strip=True) if jockey_a else "UNKNOWN"
+
         trainer_a = cols[idx["trainer"]].find("a") if idx["trainer"] != -1 else None
-        res["trainer_id"] = trainer_a["href"].split("/")[-2] if trainer_a else None
+        trainer_href = trainer_a.get("href") if trainer_a else None
+        if trainer_a and isinstance(trainer_href, str):
+            res["trainer_id"] = trainer_href.split("/")[-2]
+        else:
+            res["trainer_id"] = None
         res["trainer_name"] = trainer_a.get_text(strip=True) if trainer_a else "UNKNOWN"
+
         owner_a = cols[idx["owner"]].find("a") if idx["owner"] != -1 else None
-        res["owner_id"] = owner_a["href"].split("/")[-2] if owner_a else None
+        owner_href = owner_a.get("href") if owner_a else None
+        if owner_a and isinstance(owner_href, str):
+            res["owner_id"] = owner_href.split("/")[-2]
+        else:
+            res["owner_id"] = None
         res["owner_name"] = owner_a.get_text(strip=True) if owner_a else "UNKNOWN"
 
         res["sex_age"] = _get_txt_from_cols("sex_age", cols)
@@ -362,16 +387,19 @@ def parse_horse_profile_html(horse_id: str, html_content: bytes) -> dict[str, An
                     )
             elif "調教師" in key:
                 a = td.find("a")
-                if a:
-                    horse_data["trainer_id"] = a["href"].split("/")[-2]
+                href = a.get("href") if a else None
+                if a and isinstance(href, str):
+                    horse_data["trainer_id"] = href.split("/")[-2]
             elif "馬主" in key:
                 a = td.find("a")
-                if a:
-                    horse_data["owner_id"] = a["href"].split("/")[-2]
+                href = a.get("href") if a else None
+                if a and isinstance(href, str):
+                    horse_data["owner_id"] = href.split("/")[-2]
             elif "生産者" in key:
                 a = td.find("a")
-                if a:
-                    horse_data["producer_id"] = a["href"].split("/")[-2]
+                href = a.get("href") if a else None
+                if a and isinstance(href, str):
+                    horse_data["producer_id"] = href.split("/")[-2]
             elif "産地" in key:
                 pass
 
@@ -381,8 +409,9 @@ def parse_horse_profile_html(horse_id: str, html_content: bytes) -> dict[str, An
         tds = blood_table.find_all("td")
         if len(tds) > 0:
             a = tds[0].find("a")
-            if a:
-                horse_data["sire_id"] = a["href"].split("/")[-2]
+            href = a.get("href") if a else None
+            if a and isinstance(href, str):
+                horse_data["sire_id"] = href.split("/")[-2]
 
     horse_data.setdefault("sex", "U")
     horse_data.setdefault("birth_date", "2000-01-01")

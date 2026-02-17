@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from typing import Any
 
 import lightgbm as lgb
 import optuna
@@ -12,9 +13,7 @@ from sklearn.model_selection import StratifiedKFold
 logger = logging.getLogger(__name__)
 
 
-def train_model(
-    df: pl.DataFrame, optimize: bool = True, n_trials: int = 50
-) -> lgb.LGBMClassifier:
+def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> Any:
     """
     Trains a LightGBM multi-class classification model,
     optionally with Optuna optimization.
@@ -69,16 +68,18 @@ def train_model(
                 x_train, x_val = x_data[train_idx], x_data[val_idx]
                 y_train, y_val = y_data[train_idx], y_data[val_idx]
 
-                model = lgb.LGBMClassifier(**param)
+                from typing import Any
+
+                model = lgb.LGBMClassifier(**(param))  # type: ignore
                 model.fit(
                     x_train,
                     y_train,
                     eval_set=[(x_val, y_val)],
-                    early_stopping_rounds=50,
                     callbacks=[
+                        lgb.early_stopping(stopping_rounds=50),
                         optuna.integration.LightGBMPruningCallback(
                             trial, "multi_logloss"
-                        )
+                        ),
                     ],
                 )
                 preds = model.predict_proba(x_val)
@@ -97,7 +98,7 @@ def train_model(
         logger.info(f"Best params: {study.best_params}")
 
         best_params = study.best_params
-        model = lgb.LGBMClassifier(
+        model = lgb.LGBMClassifier(  # type: ignore
             objective="multiclass",
             num_class=4,
             metric="multi_logloss",
@@ -109,7 +110,7 @@ def train_model(
         )
     else:
         logger.info("Training LightGBM model with default parameters...")
-        model = lgb.LGBMClassifier(
+        model = lgb.LGBMClassifier(  # type: ignore
             objective="multiclass",
             num_class=4,
             metric="multi_logloss",

@@ -258,6 +258,7 @@ def get_training_data():
     query = """
         SELECT
             r.*,
+            res.horse_id, res.jockey_id,
             res.rank, res.bracket_number, res.horse_number, res.sex_age,
             res.weight_carried, res.distance_diff, res.last_3f_time,
             res.odds_win, res.popularity, res.horse_weight, res.horse_weight_diff,
