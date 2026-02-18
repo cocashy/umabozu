@@ -7,8 +7,6 @@ from datetime import date, timedelta
 # Add the 'src' directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
 
-from umabozu.app import UmabozuApp
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -81,7 +79,15 @@ def main():
     )
 
     args = parser.parse_args()
-    app = UmabozuApp()
+
+    # Lazy import: only import UmabozuApp when a command is actually being executed
+    if args.command:
+        from umabozu.app import UmabozuApp
+
+        app = UmabozuApp()
+    else:
+        parser.print_help()
+        return
 
     if args.command == "update":
         if (
@@ -108,8 +114,6 @@ def main():
         app.forecast_race(race_id=args.race_id)
     elif args.command == "status":
         app.show_db_status(local=args.local)
-    else:
-        parser.print_help()
 
 
 if __name__ == "__main__":
