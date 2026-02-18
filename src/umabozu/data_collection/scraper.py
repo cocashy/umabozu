@@ -128,13 +128,22 @@ def fetch_and_save_race_html(race_id: str, save_dir: str | None = None) -> bytes
         response.raise_for_status()
         # Race result pages are euc-jp/cp932
         html_content = response.content
-        with open(save_path, "wb") as f:
+        # Write to temporary file first, then rename (atomic operation)
+        temp_path = save_path + ".tmp"
+        with open(temp_path, "wb") as f:
             f.write(html_content)
+        os.rename(temp_path, save_path)
         logger.info(f"Successfully fetched and saved race HTML for {race_id}.")
         _wait_random_time()
         return html_content
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch race HTML for {race_id}: {e}")
+        return None
+    except OSError as e:
+        logger.error(f"Failed to save race HTML for {race_id}: {e}")
+        temp_path = save_path + ".tmp"
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         return None
 
 
@@ -158,13 +167,22 @@ def fetch_and_save_horse_html(
         response.raise_for_status()
         # Horse profile pages are euc-jp/cp932
         html_content = response.content
-        with open(save_path, "wb") as f:
+        # Write to temporary file first, then rename (atomic operation)
+        temp_path = save_path + ".tmp"
+        with open(temp_path, "wb") as f:
             f.write(html_content)
+        os.rename(temp_path, save_path)
         logger.info(f"Successfully fetched and saved horse HTML for {horse_id}.")
         _wait_random_time()
         return html_content
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch horse HTML for {horse_id}: {e}")
+        return None
+    except OSError as e:
+        logger.error(f"Failed to save horse HTML for {horse_id}: {e}")
+        temp_path = save_path + ".tmp"
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         return None
 
 
@@ -188,13 +206,22 @@ def fetch_and_save_jockey_html(
         response.raise_for_status()
         # Jockey profile pages are euc-jp/cp932
         html_content = response.content
-        with open(save_path, "wb") as f:
+        # Write to temporary file first, then rename (atomic operation)
+        temp_path = save_path + ".tmp"
+        with open(temp_path, "wb") as f:
             f.write(html_content)
+        os.rename(temp_path, save_path)
         logger.info(f"Successfully fetched and saved jockey HTML for {jockey_id}.")
         _wait_random_time()
         return html_content
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch jockey HTML for {jockey_id}: {e}")
+        return None
+    except OSError as e:
+        logger.error(f"Failed to save jockey HTML for {jockey_id}: {e}")
+        temp_path = save_path + ".tmp"
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
         return None
 
 

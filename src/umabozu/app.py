@@ -1,3 +1,4 @@
+import glob
 import logging
 import os
 import sys
@@ -16,6 +17,7 @@ from umabozu.data_collection.html_parser import (
 from umabozu.data_collection.scraper import (
     fetch_and_save_horse_html,
     fetch_and_save_jockey_html,
+    fetch_and_save_race_html,
     fetch_and_save_shutsubahyou_html,
 )
 from umabozu.data_preprocessing.data_loader import load_data_from_db
@@ -48,15 +50,19 @@ class UmabozuApp:
         """Display database statistics and detect missing data points."""
         try:
             status = get_db_status()
-            logger.info("\n--- Database Status ---")
-            logger.info(
-                f"Race Date Range: {status['race_date_min']} to "
+
+            def emit(message=""):
+                print(message)
+
+            emit("Database status")
+            emit(
+                f"Race date range: {status['race_date_min']} to "
                 f"{status['race_date_max']}"
             )
-            logger.info(f"Total Races:    {status['race_count']:,}")
-            logger.info(f"Total Results:  {status['result_count']:,}")
-            logger.info(f"Total Horses:   {status['horse_count']:,}")
-            logger.info(f"Total Jockeys:  {status['jockey_count']:,}")
+            emit(f"Total races: {status['race_count']:,}")
+            emit(f"Total results: {status['result_count']:,}")
+            emit(f"Total horses: {status['horse_count']:,}")
+            emit(f"Total jockeys: {status['jockey_count']:,}")
 
             if not status["recorded_dates"]:
                 return
@@ -81,7 +87,8 @@ class UmabozuApp:
 
             if missing_days:
                 mode_str = "Daily (Local)" if local else "Weekend (JRA)"
-                logger.warning(f"\n!!! Detected Missing Data ({mode_str} Mode) !!!")
+                emit("")
+                emit(f"Missing data ({mode_str} mode):")
 
                 # Group consecutive missing dates into ranges
                 ranges = []
@@ -100,19 +107,126 @@ class UmabozuApp:
 
                 for s, e in ranges:
                     if s == e:
-                        logger.warning(f"  Missing: {s} ({s.strftime('%a')})")
+                        emit(f"- Missing: {s} ({s.strftime('%a')})")
                     else:
                         days_count = (e - s).days + 1
-                        logger.warning(f"  Gap: {s} to {e} ({days_count} days)")
+                        emit(f"- Gap: {s} to {e} ({days_count} days)")
             else:
-                logger.info("\nNo data gaps detected in the specified mode.")
+                emit("")
+                emit("No data gaps detected in the specified mode.")
+
+            # Check for incomplete file transfers
+            temp_files = glob.glob("data/raw/html/**/*.tmp", recursive=True)
+            if temp_files:
+                emit("")
+                emit("Incomplete file transfers:")
+                for tmp in temp_files:
+                    emit(f"- {tmp}")
+                emit("Run 'update' again to retry, or remove these files")
+
+            # Check for races stuck in staging
+            from umabozu.database.crud import get_db_connection
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM staged_race_ids
+                WHERE race_id NOT IN (SELECT race_id FROM races)
+            """
+            )
+            stuck_count = cursor.fetchone()[0]
+            conn.close()
+
+            if stuck_count > 0:
+                emit("")
+                emit(f"Staging backlog: {stuck_count} race(s)")
+                emit("Downloaded but not yet fully processed.")
+                emit("Run 'update' again to retry processing")
+
+            # Check for incomplete profiles
+            from umabozu.database.crud import (
+                get_missing_horse_ids,
+                get_missing_jockey_ids,
+            )
+
+            missing_horses = get_missing_horse_ids()
+            missing_jockeys = get_missing_jockey_ids()
+
+            if missing_horses or missing_jockeys:
+                emit("")
+                emit("Incomplete profiles:")
+                if missing_horses:
+                    emit(f"- Missing horse profiles: {len(missing_horses)}")
+                if missing_jockeys:
+                    emit(f"- Missing jockey profiles: {len(missing_jockeys)}")
 
         except Exception as e:
             logger.error(f"Error retrieving database status: {e}")
             logger.exception(e)
 
-    def update_data(self, days_back=None, start_date=None, end_date=None):
+    def _retry_incomplete_html_downloads(self) -> tuple[int, int]:
+        temp_files = glob.glob("data/raw/html/**/*.tmp", recursive=True)
+        if not temp_files:
+            return 0, 0
+
+        retried = 0
+        failed = 0
+        for tmp_path in temp_files:
+            normalized = os.path.normpath(tmp_path)
+            parts = normalized.split(os.sep)
+            filename = os.path.basename(normalized)
+            if not filename.endswith(".html.tmp"):
+                continue
+            item_id = filename[: -len(".html.tmp")]
+
+            with suppress(OSError):
+                os.remove(tmp_path)
+
+            is_race = (
+                "races" in parts
+                and "race_lists" not in parts
+                and "upcoming_races" not in parts
+            )
+            if is_race:
+                html_content = fetch_and_save_race_html(item_id)
+            elif "horses" in parts:
+                html_content = fetch_and_save_horse_html(item_id)
+            elif "jockeys" in parts:
+                html_content = fetch_and_save_jockey_html(item_id)
+            else:
+                continue
+
+            if html_content:
+                retried += 1
+            else:
+                failed += 1
+
+        return retried, failed
+
+    def retry_incomplete_html_downloads(self) -> tuple[int, int]:
+        retried, failed = self._retry_incomplete_html_downloads()
+        if retried or failed:
+            logger.info(
+                "Retrying incomplete HTML downloads: %s succeeded, %s failed",
+                retried,
+                failed,
+            )
+        else:
+            logger.info("No incomplete HTML downloads found.")
+        return retried, failed
+
+    def update_data(
+        self,
+        days_back=None,
+        start_date=None,
+        end_date=None,
+        retry_tmp_only=False,
+    ):
         """Sync database with netkeiba data for a specific period."""
+        self.retry_incomplete_html_downloads()
+        if retry_tmp_only:
+            return
         if start_date and end_date:
             s_date = date.fromisoformat(start_date)
             e_date = date.fromisoformat(end_date)
