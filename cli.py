@@ -41,6 +41,11 @@ def main():
         type=str,
         help="End date for data update (YYYY-MM-DD). Use with --start-date.",
     )
+    update_parser.add_argument(
+        "--retry-tmp-only",
+        action="store_true",
+        help="Retry incomplete HTML downloads and exit.",
+    )
 
     # Train command
     train_parser = subparsers.add_parser("train", help="Train the prediction model")
@@ -93,6 +98,7 @@ def main():
             days_back=args.days_back,
             start_date=args.start_date,
             end_date=args.end_date,
+            retry_tmp_only=args.retry_tmp_only,
         )
     elif args.command == "train":
         app.train_latest_model()
