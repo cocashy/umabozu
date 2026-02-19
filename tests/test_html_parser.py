@@ -112,6 +112,7 @@ def test_parse_jockey_profile_html_extracts_core_fields(jockey_profile_html):
     assert "birth_date" in jockey
     assert "belonging" in jockey
 
+
 # Edge case tests for better coverage
 class TestHtmlParserEdgeCases:
     """Edge case tests for HTML parser functions."""
@@ -144,7 +145,9 @@ class TestHtmlParserEdgeCases:
             </body>
         </html>
         """
-        race_data, runners = parse_shutsubahyou_html("test_race_003", html_with_defaults)
+        _race_data, runners = parse_shutsubahyou_html(
+            "test_race_003", html_with_defaults
+        )
 
         # Should have default values
         if len(runners) > 0:
@@ -165,7 +168,7 @@ class TestHtmlParserEdgeCases:
             </body>
         </html>
         """
-        race_data, runners = parse_shutsubahyou_html("test_race_004", html)
+        _race_data, runners = parse_shutsubahyou_html("test_race_004", html)
 
         # Should handle gracefully (skip runner or include without horse_number)
         assert isinstance(runners, list)
@@ -180,7 +183,7 @@ class TestHtmlParserEdgeCases:
     def test_parse_race_result_html_minimal_content(self):
         """Should handle minimal HTML content."""
         minimal_bytes = "<html><body><h1>Test Race</h1></body></html>".encode("euc-jp")
-        race_data, results = parse_race_result_html("test_race_006", minimal_bytes)
+        race_data, _results = parse_race_result_html("test_race_006", minimal_bytes)
 
         assert race_data["race_id"] == "test_race_006"
         assert race_data.get("race_name") == "Test Race"
@@ -196,7 +199,7 @@ class TestHtmlParserEdgeCases:
         </html>
         """.encode("euc-jp")
 
-        race_data, results = parse_race_result_html("test_race_007", html_with_date)
+        race_data, _results = parse_race_result_html("test_race_007", html_with_date)
 
         if "race_date" in race_data:
             assert "2024" in race_data["race_date"]
@@ -240,7 +243,7 @@ class TestHtmlParserEdgeCases:
             </body>
         </html>
         """
-        race_data, runners = parse_shutsubahyou_html("test_race_009", html_complex)
+        race_data, _runners = parse_shutsubahyou_html("test_race_009", html_complex)
 
         # Should extract distance and course type
         assert race_data.get("distance") == 1200 or "distance" not in race_data
@@ -250,7 +253,7 @@ class TestHtmlParserEdgeCases:
         """Should handle various character encodings."""
         # Test with UTF-8 encoded HTML (different from typical euc-jp)
         html_utf8 = "<html><body><div class='RaceName'>テストレース</div></body></html>"
-        race_data, runners = parse_shutsubahyou_html("test_race_010", html_utf8)
+        race_data, _runners = parse_shutsubahyou_html("test_race_010", html_utf8)
 
         assert race_data["race_id"] == "test_race_010"
         # Should extract at least the race_id without crashing
@@ -266,7 +269,7 @@ class TestHtmlParserEdgeCases:
         </html>
         """.encode("euc-jp")
 
-        race_data, results = parse_race_result_html("test_race_011", html_bad_date)
+        race_data, _results = parse_race_result_html("test_race_011", html_bad_date)
 
         # Should not crash, race_id should be preserved
         assert race_data["race_id"] == "test_race_011"

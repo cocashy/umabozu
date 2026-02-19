@@ -37,6 +37,8 @@ from umabozu.database.crud import (
 @pytest.fixture(autouse=True)
 def setup_test_db():
     """Setup test database before each test."""
+    from contextlib import suppress
+
     # Create a temporary database file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as f:
         db_path = f.name
@@ -47,10 +49,8 @@ def setup_test_db():
         create_tables()
         yield
         # Cleanup
-        try:
+        with suppress(FileNotFoundError):
             os.unlink(db_path)
-        except FileNotFoundError:
-            pass
 
 
 class TestInsertRace:
@@ -94,7 +94,10 @@ class TestInsertRace:
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM races WHERE race_id = ?", ("race_001",))
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM races WHERE race_id = ?",
+            ("race_001",),
+        )
         count = cursor.fetchone()["count"]
 
         assert count == 1  # Only one record should exist
@@ -180,7 +183,10 @@ class TestInsertHorse:
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM horses WHERE horse_id = ?", ("horse_001",))
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM horses WHERE horse_id = ?",
+            ("horse_001",),
+        )
         count = cursor.fetchone()["count"]
         conn.close()
 
@@ -234,7 +240,7 @@ class TestInsertResults:
         insert_race({"race_id": "race_001"})
         insert_horse({"horse_id": "horse_001"})
         insert_jockey({"jockey_id": "jockey_001"})
-        yield
+        return
 
     def test_insert_results_single_record(self, setup_race_and_entities):
         """Should insert a race result."""
@@ -281,7 +287,10 @@ class TestInsertResults:
 
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM results WHERE race_id = ?", ("race_001",))
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM results WHERE race_id = ?",
+            ("race_001",),
+        )
         count = cursor.fetchone()["count"]
         conn.close()
 
