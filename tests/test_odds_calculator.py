@@ -291,3 +291,212 @@ class TestCalculateExpectedValueIntegration:
 
         # Lower odds horses with higher probability should have better EV
         assert result[0]["expected_value"] > result[7]["expected_value"]
+
+
+class TestCalculateExpectedValueAdvanced:
+    """Advanced EV calculation tests."""
+
+    def test_calculate_expected_value_all_positive_ev(self):
+        """All horses can have positive EV."""
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * 3,
+                "horse_id": ["H001", "H002", "H003"],
+                "odds_win": [2.5, 3.0, 4.0],
+            }
+        )
+
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": [0.5, 0.4, 0.3],
+                "proba_1": [0.3, 0.3, 0.3],
+                "proba_2": [0.15, 0.2, 0.2],
+                "proba_3": [0.05, 0.1, 0.2],
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        # All should have positive expected value
+        assert (result["expected_value"] > 0).all()
+
+    def test_calculate_expected_value_negative_ev_scenarios(self):
+        """Low probability with low odds = negative EV."""
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"],
+                "odds_win": [1.5],  # Low odds
+            }
+        )
+
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": [0.2],  # Low probability
+                "proba_1": [0.3],
+                "proba_2": [0.3],
+                "proba_3": [0.2],
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        # EV = 0.2 * 1.5 = 0.3 (still positive but low)
+        assert result["expected_value"][0] == pytest.approx(0.3)
+
+    def test_calculate_expected_value_large_field(self):
+        """Calculate EV for large race field (16+ horses)."""
+        n_horses = 18
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * n_horses,
+                "horse_id": [f"H{i:03d}" for i in range(1, n_horses + 1)],
+                "odds_win": list(range(2, n_horses + 2)),  # 2.0 to 19.0 odds
+            }
+        )
+
+        # Generate realistic probabilities that sum to 1
+        import numpy as np
+
+        np.random.seed(42)
+        proba_0 = np.random.dirichlet(np.ones(n_horses))
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": proba_0,
+                "proba_1": np.random.dirichlet(np.ones(n_horses)),
+                "proba_2": np.random.dirichlet(np.ones(n_horses)),
+                "proba_3": np.random.dirichlet(np.ones(n_horses)),
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        assert len(result) == n_horses
+        # All EVs should be positive
+        assert (result["expected_value"] > 0).all()
+
+    def test_calculate_expected_value_probability_equals_one(self):
+        """Certainty scenario: probability = 1.0."""
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"],
+                "odds_win": [10.0],
+            }
+        )
+
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": [1.0],
+                "proba_1": [0.0],
+                "proba_2": [0.0],
+                "proba_3": [0.0],
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        # EV should equal odds
+        assert result["expected_value"][0] == pytest.approx(10.0)
+
+    def test_calculate_expected_value_very_high_odds(self):
+        """Test with extreme odds values."""
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"],
+                "odds_win": [100.0],
+            }
+        )
+
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": [0.01],
+                "proba_1": [0.3],
+                "proba_2": [0.3],
+                "proba_3": [0.39],
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        # EV = 0.01 * 100 = 1.0
+        assert result["expected_value"][0] == pytest.approx(1.0)
+
+    def test_calculate_expected_value_fractional_probabilities(self):
+        """Test with fractional (non-round) probabilities."""
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"],
+                "odds_win": [2.3],
+            }
+        )
+
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": [0.37],
+                "proba_1": [0.28],
+                "proba_2": [0.22],
+                "proba_3": [0.13],
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        # EV = 0.37 * 2.3
+        expected_ev = 0.37 * 2.3
+        assert result["expected_value"][0] == pytest.approx(expected_ev)
+
+    def test_calculate_expected_value_data_shape_preservation(self):
+        """Shape and column structure should be preserved."""
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["201", "201", "202"],
+                "horse_id": ["A", "B", "C"],
+                "odds_win": [2.0, 3.0, 2.5],
+                "extra_col": [1, 2, 3],
+            }
+        )
+
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": [0.4, 0.3, 0.35],
+                "proba_1": [0.3, 0.35, 0.3],
+                "proba_2": [0.2, 0.25, 0.2],
+                "proba_3": [0.1, 0.1, 0.15],
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        # Should have same number of rows
+        assert len(result) == 3
+        # Should have original columns plus new ones
+        assert "race_id" in result.columns
+        assert "horse_id" in result.columns
+        assert "extra_col" in result.columns
+        assert "expected_value" in result.columns
+        assert "win_probability" in result.columns
+
+    def test_calculate_expected_value_sorting_preservation(self):
+        """Order of rows should be preserved."""
+        original_df = pl.DataFrame(
+            {
+                "race_id": ["202301010101", "202301010101", "202301010102"],
+                "horse_id": ["Z", "Y", "X"],
+                "odds_win": [5.0, 3.0, 2.0],
+            }
+        )
+
+        probas_df = pl.DataFrame(
+            {
+                "proba_0": [0.2, 0.4, 0.5],
+                "proba_1": [0.3, 0.3, 0.3],
+                "proba_2": [0.3, 0.2, 0.15],
+                "proba_3": [0.2, 0.1, 0.05],
+            }
+        )
+
+        result = calculate_expected_value(probas_df, original_df)
+
+        # Order should match original
+        assert result["horse_id"][0] == "Z"
+        assert result["horse_id"][1] == "Y"
+        assert result["horse_id"][2] == "X"

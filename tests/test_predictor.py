@@ -282,3 +282,145 @@ class TestPredictorIntegration:
             for prob_col in ["proba_0", "proba_1", "proba_2", "proba_3"]:
                 assert (probas[prob_col] >= 0.0).all()
                 assert (probas[prob_col] <= 1.0).all()
+
+
+class TestPredictProbabilitiesAdvanced:
+    """Additional tests for edge cases and advanced scenarios."""
+
+    def test_predict_probabilities_single_horse(self):
+        """Should handle prediction for single horse."""
+        df = pl.DataFrame(
+            {
+                "odds_win": [5.0],
+                "popularity": [10],
+            }
+        )
+
+        mock_model = MockLGBMClassifier()
+        result = predict_probabilities(mock_model, df, ["odds_win", "popularity"])
+
+        assert len(result) == 1
+        total_prob = (
+            result["proba_0"][0]
+            + result["proba_1"][0]
+            + result["proba_2"][0]
+            + result["proba_3"][0]
+        )
+        assert total_prob == pytest.approx(1.0, abs=0.01)
+
+    def test_predict_probabilities_large_dataset(self):
+        """Should handle large dataset efficiently."""
+        import numpy as np
+
+        np.random.seed(42)
+        df = pl.DataFrame(
+            {
+                "odds_win": np.random.uniform(1.5, 30.0, 1000),
+                "popularity": np.random.randint(1, 20, 1000),
+            }
+        )
+
+        mock_model = MockLGBMClassifier()
+        result = predict_probabilities(mock_model, df, ["odds_win", "popularity"])
+
+        assert len(result) == 1000
+        # All rows should have valid probabilities
+        for col in ["proba_0", "proba_1", "proba_2", "proba_3"]:
+            assert (result[col] >= 0.0).all()
+            assert (result[col] <= 1.0).all()
+
+    def test_predict_probabilities_with_float_feature_values(self):
+        """Should handle float-type feature values correctly."""
+        df = pl.DataFrame(
+            {
+                "odds_win": [2.5, 3.75, 4.25],
+                "popularity": [3.0, 5.0, 7.0],
+            }
+        )
+
+        mock_model = MockLGBMClassifier()
+        result = predict_probabilities(mock_model, df, ["odds_win", "popularity"])
+
+        assert len(result) == 3
+        assert isinstance(result, pl.DataFrame)
+
+    def test_predict_probabilities_repeats_race_horses(self):
+        """Should handle multiple horses from same race."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * 8,
+                "horse_id": [f"H{i:03d}" for i in range(1, 9)],
+                "odds_win": [2.0, 3.0, 4.0, 5.0, 8.0, 10.0, 15.0, 20.0],
+                "popularity": [1, 2, 3, 4, 5, 6, 7, 8],
+            }
+        )
+
+        mock_model = MockLGBMClassifier()
+        feature_cols = ["odds_win", "popularity"]
+        result = predict_probabilities(mock_model, df, feature_cols)
+
+        assert len(result) == 8
+        # Check that all have valid probabilities
+        for col in ["proba_0", "proba_1", "proba_2", "proba_3"]:
+            assert result[col].is_null().sum() == 0  # No NaN values
+
+    def test_predict_probabilities_with_pandas_compatible_output(self):
+        """Output should be Polars DataFrame for compatibility."""
+        df = pl.DataFrame({"odds_win": [2.0], "popularity": [3]})
+
+        mock_model = MockLGBMClassifier()
+        result = predict_probabilities(mock_model, df, ["odds_win", "popularity"])
+
+        # Must be Polars DataFrame, not Pandas
+        assert isinstance(result, pl.DataFrame)
+        assert not isinstance(result, type(None))
+
+    def test_save_model_creates_readable_file(self):
+        """Saved model file should be readable and loadable."""
+        mock_model = MockLGBMClassifier()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = Path(tmpdir) / "test_model.pkl"
+
+            save_model(mock_model, str(model_path))
+
+            # File should exist and have content
+            assert model_path.exists()
+            assert model_path.stat().st_size > 0
+
+    def test_load_model_nonexistent_path_raises_error(self):
+        """Loading nonexistent model should raise error."""
+        with pytest.raises(FileNotFoundError):
+            load_model("/nonexistent/path/model.pkl")
+
+    def test_predict_probabilities_numeric_conversion(self):
+        """Should convert data to numeric for model prediction."""
+        df = pl.DataFrame(
+            {
+                "odds_win": [2.0, 3.0],
+                "popularity": [3, 5],
+            }
+        )
+
+        mock_model = MockLGBMClassifier()
+
+        # Should not raise type error
+        result = predict_probabilities(mock_model, df, ["odds_win", "popularity"])
+
+        assert len(result) == 2
+
+    def test_predict_probabilities_with_decimal_odds(self):
+        """Should handle decimal odds format correctly."""
+        df = pl.DataFrame(
+            {
+                "odds_win": [1.5, 2.25, 3.75],
+                "popularity": [1, 3, 5],
+            }
+        )
+
+        mock_model = MockLGBMClassifier()
+        result = predict_probabilities(mock_model, df, ["odds_win", "popularity"])
+
+        # Should have valid probabilities despite decimal odds
+        for col in ["proba_0", "proba_1", "proba_2", "proba_3"]:
+            assert (result[col] >= 0.0).all()

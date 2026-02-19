@@ -339,3 +339,210 @@ class TestSimulationIntegration:
         assert investment == 100.0
         assert payout == 240.0
         assert roi == 140.0
+
+
+class TestSimulateBettingAdvanced:
+    """Advanced tests for betting simulation edge cases."""
+
+    def test_simulate_betting_all_horses_selected(self):
+        """All horses can be selected if they meet threshold."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * 3,
+                "horse_id": ["H001", "H002", "H003"],
+                "expected_value": [2.0, 1.5, 1.2],  # All above 1.0
+                "win_probability": [0.5, 0.4, 0.3],
+                "odds_win": [4.0, 3.75, 4.0],
+                "rank": [1, 2, 3],
+            }
+        )
+
+        result = simulate_betting(df, ev_threshold=1.0)
+        assert len(result) == 3
+
+    def test_simulate_betting_mixed_outcome(self):
+        """Test with mixture of winners and losers."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * 4,
+                "horse_id": ["H001", "H002", "H003", "H004"],
+                "expected_value": [1.5, 1.2, 1.8, 0.5],
+                "win_probability": [0.5, 0.4, 0.6, 0.2],
+                "odds_win": [3.0, 3.0, 3.0, 2.5],
+                "rank": [1, 2, 3, 4],  # Only H001 wins
+            }
+        )
+
+        result = simulate_betting(df, ev_threshold=1.0)
+
+        # H001, H002, H003 should be selected
+        assert len(result) == 3
+
+    def test_calculate_payout_all_winners(self):
+        """100% win rate scenario."""
+        df = pl.DataFrame(
+            {
+                "expected_value": [1.5, 1.5, 1.5],
+                "win_probability": [0.5, 0.5, 0.5],
+                "odds_win": [3.0, 4.0, 5.0],
+                "rank": [1, 1, 1],  # All win
+            }
+        )
+
+        investment, payout, roi = calculate_payout(df)
+
+        # 3 bets * 100 = 300 investment
+        assert investment == 300.0
+        # 100 * 3 + 100 * 4 + 100 * 5 = 1200
+        assert payout == 1200.0
+        roi_expected = (1200.0 - 300.0) / 300.0 * 100
+        assert roi == pytest.approx(roi_expected)
+
+    def test_calculate_payout_no_winners(self):
+        """0% win rate scenario."""
+        df = pl.DataFrame(
+            {
+                "expected_value": [1.5, 1.5],
+                "win_probability": [0.5, 0.5],
+                "odds_win": [3.0, 4.0],
+                "rank": [2, 3],  # No winners
+            }
+        )
+
+        investment, payout, roi = calculate_payout(df)
+
+        assert investment == 200.0
+        assert payout == 0.0
+        assert roi == -100.0  # Total loss
+
+    def test_simulate_betting_high_threshold(self):
+        """High EV threshold filters out most horses."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * 5,
+                "horse_id": ["H001", "H002", "H003", "H004", "H005"],
+                "expected_value": [0.5, 1.0, 1.5, 2.0, 2.5],
+                "win_probability": [0.2, 0.4, 0.5, 0.6, 0.7],
+                "odds_win": [2.5, 2.5, 3.0, 3.5, 3.5],
+                "rank": [1, 2, 3, 4, 5],
+            }
+        )
+
+        result = simulate_betting(df, ev_threshold=2.0)
+
+        # Only H005 should be selected (EV must be > 2.0, not >= 2.0)
+        assert len(result) == 1
+        horse_ids = set(result["horse_id"].to_list())
+        assert "H005" in horse_ids
+
+    def test_simulate_betting_fractional_odds(self):
+        """Handle fractional odds correctly."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * 2,
+                "horse_id": ["H001", "H002"],
+                "expected_value": [1.5, 1.2],
+                "win_probability": [0.5, 0.4],
+                "odds_win": [2.5, 3.75],  # Fractional format
+                "rank": [1, 2],
+            }
+        )
+
+        result = simulate_betting(df)
+        assert len(result) >= 0  # Should not crash
+
+    def test_calculate_payout_returns_correct_structure(self):
+        """Return values should be numeric and correctly structured."""
+        df = pl.DataFrame(
+            {
+                "expected_value": [1.5],
+                "win_probability": [0.5],
+                "odds_win": [3.0],
+                "rank": [1],
+            }
+        )
+
+        investment, payout, roi = calculate_payout(df)
+
+        # Check types
+        assert isinstance(investment, (int, float))
+        assert isinstance(payout, (int, float))
+        assert isinstance(roi, (int, float))
+
+        # Check values are non-negative
+        assert investment >= 0
+        assert payout >= 0
+
+    def test_simulate_betting_preserves_original_data(self):
+        """Original DataFrame columns should be preserved in result."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"],
+                "horse_id": ["H001"],
+                "expected_value": [1.5],
+                "win_probability": [0.5],
+                "odds_win": [3.0],
+                "rank": [1],
+                "horse_name": ["Winner"],
+            }
+        )
+
+        result = simulate_betting(df)
+
+        if len(result) > 0:
+            assert "horse_name" in result.columns
+            assert result["horse_name"][0] == "Winner"
+
+    def test_simulate_betting_with_zero_ev(self):
+        """Zero EV should be treated as no edge."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"],
+                "horse_id": ["H001"],
+                "expected_value": [0.0],
+                "win_probability": [0.3],
+                "odds_win": [3.0],
+                "rank": [1],
+            }
+        )
+
+        result = simulate_betting(df, ev_threshold=1.0)
+        assert result.is_empty()
+
+    def test_simulate_betting_with_zero_probability_horse(self):
+        """Zero probability horse should be handled correctly."""
+        df = pl.DataFrame(
+            {
+                "race_id": ["202301010101"] * 2,
+                "horse_id": ["H001", "H002"],
+                "expected_value": [2.0, 1.5],
+                "win_probability": [0.5, 0.0],  # Zero probability
+                "odds_win": [4.0, 30.0],
+                "rank": [1, 2],
+            }
+        )
+
+        result = simulate_betting(df)
+
+        # H001 should be selected despite H002 having 0 probability
+        assert len(result) >= 1
+
+    def test_calculate_payout_consistent_with_odds(self):
+        """Payout should correctly reflect odds."""
+        df = pl.DataFrame(
+            {
+                "expected_value": [1.0],
+                "win_probability": [1.0],  # Guaranteed win
+                "odds_win": [5.0],
+                "rank": [1],
+            }
+        )
+
+        investment, payout, roi = calculate_payout(df)
+
+        # Investment: 100 * 1 = 100
+        # Payout: 100 * 5 = 500
+        # ROI: (500 - 100) / 100 * 100 = 400%
+        assert investment == 100.0
+        assert payout == 500.0
+        assert roi == pytest.approx(400.0)
