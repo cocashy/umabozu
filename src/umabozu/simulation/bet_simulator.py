@@ -45,7 +45,7 @@ def simulate_betting(
 
 def calculate_payout(simulated_bets: pl.DataFrame) -> tuple[float, float, float]:
     """
-    Calculates total investment, total payout, and ROI from simulated bets.
+    Calculates total investment, total payout, and recovery rate from simulated bets.
     """
     if simulated_bets.is_empty():
         return 0.0, 0.0, 0.0
@@ -57,12 +57,10 @@ def calculate_payout(simulated_bets: pl.DataFrame) -> tuple[float, float, float]
         if row["rank"] == 1:
             total_payout += row["odds_win"] * 100
 
-    roi = (
-        (total_payout - total_investment) / total_investment * 100
-        if total_investment > 0
-        else 0.0
+    recovery_rate = (
+        (total_payout / total_investment) * 100 if total_investment > 0 else 0.0
     )
-    return total_investment, total_payout, roi
+    return total_investment, total_payout, recovery_rate
 
 
 if __name__ == "__main__":
@@ -121,10 +119,10 @@ if __name__ == "__main__":
     # as mock data might not produce high EV
     selected_bets = simulate_betting(df_with_expected_value, ev_threshold=0.5)
 
-    investment, payout, roi = calculate_payout(selected_bets)
+    investment, payout, recovery_rate = calculate_payout(selected_bets)
 
     logger.info("\n--- Betting Simulation Results ---")
     logger.info(f"Total Bets: {len(selected_bets)}")
     logger.info(f"Total Investment: {investment:.2f} JPY")
     logger.info(f"Total Payout: {payout:.2f} JPY")
-    logger.info(f"ROI: {roi:.2f}%")
+    logger.info(f"回収率: {recovery_rate:.2f}%")

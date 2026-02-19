@@ -2,7 +2,7 @@
 Tests for betting simulation module.
 
 Following t-wada pragmatic testing approach:
-- Focus on core betting logic: filtering, payout calculation, ROI
+- Focus on core betting logic: filtering, payout calculation, recovery rate
 - Test edge cases: empty results, no winning bets, perfect prediction
 - Verify financial accuracy of bet simulation
 """
@@ -149,11 +149,11 @@ class TestCalculatePayout:
     def test_calculate_payout_empty_bets(self):
         """Empty bet list should return zero values."""
         df = pl.DataFrame()
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         assert investment == 0.0
         assert payout == 0.0
-        assert roi == 0.0
+        assert recovery_rate == 0.0
 
     def test_calculate_payout_single_winning_bet(self):
         """Single winning bet should calculate correctly."""
@@ -165,17 +165,17 @@ class TestCalculatePayout:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         # 1 bet * 100 yen = 100 investment
         assert investment == 100.0
         # Odds 3.0 * 100 yen = 300 payout
         assert payout == 300.0
-        # ROI = (300 - 100) / 100 * 100 = 200%
-        assert roi == 200.0
+        # Recovery rate = 300 / 100 * 100 = 300%
+        assert recovery_rate == 300.0
 
     def test_calculate_payout_single_losing_bet(self):
-        """Single losing bet should show negative ROI."""
+        """Single losing bet should show zero recovery rate."""
         df = pl.DataFrame(
             {
                 "horse_id": ["H001"],
@@ -184,12 +184,12 @@ class TestCalculatePayout:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         assert investment == 100.0
         assert payout == 0.0  # No payout for loser
-        # ROI = (0 - 100) / 100 * 100 = -100%
-        assert roi == -100.0
+        # Recovery rate = 0 / 100 * 100 = 0%
+        assert recovery_rate == 0.0
 
     def test_calculate_payout_multiple_bets_mixed(self):
         """Multiple bets with mixed results."""
@@ -201,14 +201,14 @@ class TestCalculatePayout:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         # 3 bets * 100 yen = 300 investment
         assert investment == 300.0
         # 2 winners: (2.0 * 100) + (5.0 * 100) = 700 payout
         assert payout == 700.0
-        # ROI = (700 - 300) / 300 * 100 = 133.33%
-        assert roi == pytest.approx(133.33, rel=1)
+        # Recovery rate = 700 / 300 * 100 = 233.33%
+        assert recovery_rate == pytest.approx(233.33, rel=1)
 
     def test_calculate_payout_all_winning_bets(self):
         """Perfect prediction: all bets win."""
@@ -220,12 +220,12 @@ class TestCalculatePayout:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         assert investment == 200.0
         assert payout == 500.0  # (2.0 + 3.0) * 100
-        # ROI = (500 - 200) / 200 * 100 = 150%
-        assert roi == 150.0
+        # Recovery rate = 500 / 200 * 100 = 250%
+        assert recovery_rate == 250.0
 
     def test_calculate_payout_all_losing_bets(self):
         """Complete failure: all bets lose."""
@@ -237,14 +237,14 @@ class TestCalculatePayout:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         assert investment == 200.0
         assert payout == 0.0
-        assert roi == -100.0
+        assert recovery_rate == 0.0
 
     def test_calculate_payout_high_odds_winner(self):
-        """Winning longshot should generate high ROI."""
+        """Winning longshot should generate high recovery rate."""
         df = pl.DataFrame(
             {
                 "horse_id": ["H001"],
@@ -253,12 +253,12 @@ class TestCalculatePayout:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         assert investment == 100.0
         assert payout == 2000.0
-        # ROI = (2000 - 100) / 100 * 100 = 1900%
-        assert roi == 1900.0
+        # Recovery rate = 2000 / 100 * 100 = 2000%
+        assert recovery_rate == 2000.0
 
     def test_calculate_payout_zero_odds(self):
         """Edge case: zero odds (no payout even if wins)."""
@@ -270,11 +270,11 @@ class TestCalculatePayout:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         assert investment == 100.0
         assert payout == 0.0  # 0 * 100 = 0
-        assert roi == -100.0
+        assert recovery_rate == 0.0
 
 
 class TestSimulationIntegration:
@@ -302,15 +302,15 @@ class TestSimulationIntegration:
         assert len(selected_bets) == 2
 
         # Step 2: Calculate returns
-        investment, payout, roi = calculate_payout(selected_bets)
+        investment, payout, recovery_rate = calculate_payout(selected_bets)
 
         # One winner (H002 at 3.0 odds) and one loser (H001)
         # Investment: 2 * 100 = 200
         # Payout: 3.0 * 100 = 300 (only from winner)
-        # ROI: (300 - 200) / 200 * 100 = 50%
+        # Recovery rate: 300 / 200 * 100 = 150%
         assert investment == 200.0
         assert payout == 300.0
-        assert roi == 50.0
+        assert recovery_rate == 150.0
 
     def test_betting_with_realistic_race_data(self):
         """Test with realistic horse racing data structure."""
@@ -333,12 +333,12 @@ class TestSimulationIntegration:
         assert len(bets) == 1
 
         # Calculate returns
-        investment, payout, roi = calculate_payout(bets)
+        investment, payout, recovery_rate = calculate_payout(bets)
 
         # Winner at 2.4 odds
         assert investment == 100.0
         assert payout == 240.0
-        assert roi == 140.0
+        assert recovery_rate == 240.0
 
 
 class TestSimulateBettingAdvanced:
@@ -389,14 +389,14 @@ class TestSimulateBettingAdvanced:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         # 3 bets * 100 = 300 investment
         assert investment == 300.0
         # 100 * 3 + 100 * 4 + 100 * 5 = 1200
         assert payout == 1200.0
-        roi_expected = (1200.0 - 300.0) / 300.0 * 100
-        assert roi == pytest.approx(roi_expected)
+        recovery_expected = (1200.0 / 300.0) * 100
+        assert recovery_rate == pytest.approx(recovery_expected)
 
     def test_calculate_payout_no_winners(self):
         """0% win rate scenario."""
@@ -409,11 +409,11 @@ class TestSimulateBettingAdvanced:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         assert investment == 200.0
         assert payout == 0.0
-        assert roi == -100.0  # Total loss
+        assert recovery_rate == 0.0  # Total loss
 
     def test_simulate_betting_high_threshold(self):
         """High EV threshold filters out most horses."""
@@ -462,12 +462,12 @@ class TestSimulateBettingAdvanced:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         # Check types
         assert isinstance(investment, (int, float))
         assert isinstance(payout, (int, float))
-        assert isinstance(roi, (int, float))
+        assert isinstance(recovery_rate, (int, float))
 
         # Check values are non-negative
         assert investment >= 0
@@ -538,11 +538,11 @@ class TestSimulateBettingAdvanced:
             }
         )
 
-        investment, payout, roi = calculate_payout(df)
+        investment, payout, recovery_rate = calculate_payout(df)
 
         # Investment: 100 * 1 = 100
         # Payout: 100 * 5 = 500
-        # ROI: (500 - 100) / 100 * 100 = 400%
+        # Recovery rate: 500 / 100 * 100 = 500%
         assert investment == 100.0
         assert payout == 500.0
-        assert roi == pytest.approx(400.0)
+        assert recovery_rate == pytest.approx(500.0)
