@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyd
 *.pyo
+.coverage
 
 # Virtual environment
 .venv/
