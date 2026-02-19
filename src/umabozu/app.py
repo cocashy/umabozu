@@ -477,9 +477,7 @@ class UmabozuApp:
                 "ignoring existing model."
             )
 
-        logger.info(
-            f"Training new model (optimize={optimize}, n_trials={n_trials})..."
-        )
+        logger.info(f"Training new model (optimize={optimize}, n_trials={n_trials})...")
         model = train_model(train_df, optimize=optimize, n_trials=n_trials)
         logger.info("Model training complete.")
         # Predict on test set
