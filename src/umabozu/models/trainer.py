@@ -33,8 +33,8 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
     from umabozu.data_preprocessing.feature_engineer import get_feature_cols
 
     feature_cols = [col for col in get_feature_cols() if col in df.columns]
-    x_data = df.select(feature_cols).to_numpy()
-    y_data = df.select("target").to_numpy().flatten()
+    x_data = df.select(feature_cols).to_pandas()
+    y_data = df.select("target").to_pandas().values.flatten()
 
     if optimize:
         logger.info("Starting Optuna optimization for LightGBM...")
@@ -65,7 +65,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
             logloss_scores = []
 
             for train_idx, val_idx in tss.split(x_data, y_data):
-                x_train, x_val = x_data[train_idx], x_data[val_idx]
+                x_train, x_val = x_data.iloc[train_idx], x_data.iloc[val_idx]
                 y_train, y_val = y_data[train_idx], y_data[val_idx]
 
                 from typing import Any
