@@ -65,18 +65,6 @@ def main():
         "If specified, data will be split and test performance logged.",
     )
 
-    # Predict command
-    predict_parser = subparsers.add_parser(
-        "predict", help="Predict for historical races in DB for a specific date"
-    )
-    predict_parser.add_argument(
-        "target_date",
-        type=str,
-        nargs="?",
-        default=date.today().strftime("%Y-%m-%d"),
-        help="Target date for prediction (YYYY-MM-DD). Defaults to today.",
-    )
-
     # Forecast command
     forecast_parser = subparsers.add_parser(
         "forecast", help="Forecast for a live upcoming race using its race_id"
@@ -166,8 +154,6 @@ def main():
             n_trials=args.n_trials,
             test_ratio=args.test_ratio,
         )
-    elif args.command == "predict":
-        app.predict_upcoming(target_date=args.target_date)
     elif args.command == "forecast":
         app.forecast_race(race_id=args.race_id)
     elif args.command == "status":
