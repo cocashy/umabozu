@@ -268,6 +268,8 @@ def get_training_data():
             jockeys AS j ON res.jockey_id = j.jockey_id
         WHERE
             h.horse_name IS NOT 'UNKNOWN' AND j.jockey_name IS NOT 'UNKNOWN'
+        ORDER BY
+            r.race_date, r.race_id, res.horse_number
     """
     df = pl.read_database(query, connection=conn)
     conn.close()

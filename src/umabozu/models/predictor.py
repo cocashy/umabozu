@@ -65,6 +65,9 @@ if __name__ == "__main__":
     logger.info("Loading data for prediction test...")
     full_df = load_data_from_db()
 
+    if "race_date" in full_df.columns:
+        full_df = full_df.sort("race_date")
+
     # Create a dummy 'rank' column if it doesn't exist for testing purposes
     if "rank" not in full_df.columns:
         full_df = full_df.with_columns(pl.lit(0).alias("rank"))

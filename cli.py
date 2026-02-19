@@ -98,12 +98,15 @@ def main():
         "--model-path",
         type=str,
         default="trained_models/lgbm_model.pkl",
-        help="Path to trained model (default: trained_models/lgbm_model.pkl).",
+        help=(
+            "Ignored. simulate always retrains to avoid leakage. "
+            "Kept for backward compatibility."
+        ),
     )
     simulate_parser.add_argument(
         "--retrain",
         action="store_true",
-        help="Train a new model instead of loading existing one.",
+        help="Deprecated. simulate always retrains to avoid leakage.",
     )
     simulate_parser.add_argument(
         "--optimize",

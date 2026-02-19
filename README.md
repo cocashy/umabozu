@@ -87,19 +87,13 @@ umabozu はコマンドラインインターフェース (`cli.py`) を介して
 
 ### 3. バックテストシミュレーション (新機能)
 
-学習済みモデルを使用してバックテストを実施します。train/test分割を行い、テストセットで詳細なバックテストを実施します。ROI、的中率、ベット数などの詳細なレポートが生成されます。
+バックテストを実施します。train/test分割を行い、訓練データで再学習したモデルのみを使用してテストセットを評価します（リーク防止のため、既存モデルは使用しません）。ROI、的中率、ベット数などの詳細なレポートが生成されます。
 
-**推奨ワークフロー（2ステップ）:**
+**推奨ワークフロー:**
 
-1. まずモデルを学習:
-    ```bash
-    uv run cli.py train
-    ```
-
-2. 学習済みモデルでシミュレーション（高速）:
-    ```bash
-    uv run cli.py simulate
-    ```
+```bash
+uv run cli.py simulate
+```
 
 **simulateコマンドのオプション:**
 
@@ -118,14 +112,9 @@ umabozu はコマンドラインインターフェース (`cli.py`) を介して
     uv run cli.py simulate --model-path trained_models/my_model.pkl
     ```
 
--   **その場で学習してシミュレーション（1ステップ、再学習モード）:**
-    ```bash
-    uv run cli.py simulate --retrain
-    ```
-
 -   **Optuna最適化を使用して学習＆シミュレーション:**
     ```bash
-    uv run cli.py simulate --retrain --optimize --n-trials 30
+    uv run cli.py simulate --optimize --n-trials 30
     ```
 
 出力例:
@@ -173,6 +162,12 @@ netkeiba の12桁のレースIDを指定して、開催前のレースの賭け�
     ```
 
 ---
+
+## データリーク方針
+
+- レース前に取得できない情報は特徴量として使用しない。
+- `odds_win` と `popularity` はレース前に入手不可能とみなし、学習・評価の特徴量から除外する（使用した場合はリーク扱い）。
+- 時系列の評価では、必ず `race_date` 順に並べた上で分割する。
 
 ## プロジェクト構造
 
