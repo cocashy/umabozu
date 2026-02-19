@@ -29,8 +29,6 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
 
     # Convert necessary columns to numeric, coercing errors to null
     numeric_cols = [
-        "odds_win",
-        "popularity",
         "horse_weight",
         "horse_weight_diff",
         "weight_carried",
@@ -60,13 +58,6 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
             .alias(f"horse_rolling_rank_mean_{window}")
         )
         df = df.with_columns(
-            pl.col("odds_win")
-            .shift(1)
-            .rolling_mean(window_size=window)
-            .over("horse_name")
-            .alias(f"horse_rolling_odds_mean_{window}")
-        )
-        df = df.with_columns(
             pl.col("last_3f_time")
             .shift(1)
             .rolling_mean(window_size=window)
@@ -82,8 +73,6 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
 def get_feature_cols() -> list[str]:
     """Returns a list of feature columns used for the model."""
     return [
-        "odds_win",
-        "popularity",
         "horse_weight",
         "horse_weight_diff",
         "weight_carried",
@@ -94,9 +83,6 @@ def get_feature_cols() -> list[str]:
         "horse_rolling_rank_mean_3",
         "horse_rolling_rank_mean_5",
         "horse_rolling_rank_mean_10",
-        "horse_rolling_odds_mean_3",
-        "horse_rolling_odds_mean_5",
-        "horse_rolling_odds_mean_10",
         "horse_rolling_last3f_mean_3",
         "horse_rolling_last3f_mean_5",
         "horse_rolling_last3f_mean_10",

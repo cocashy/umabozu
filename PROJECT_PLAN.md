@@ -115,7 +115,8 @@ graph TD
     - モデルの予測精度向上に寄与する以下の特徴量を生成します。
     - **1. 基本的な特徴量（生データから直接利用）:**
         - **レース情報:** `distance`, `course_type`, `course_direction`, `track_condition`, `weather`, `race_grade`, `start_time` (時間帯をカテゴリや数値に変換), `num_of_runners`, `prize_money_1st` など。
-        - **出走馬情報（レースごとの動的データ）:** `weight_carried`, `bracket_number`, `horse_number`, `odds_win`, `popularity`, `horse_weight`, `horse_weight_diff`。
+        - **出走馬情報（レースごとの動的データ）:** `weight_carried`, `bracket_number`, `horse_number`, `horse_weight`, `horse_weight_diff`。
+        - **リーク扱い（学習・評価に使用しない）:** `odds_win`, `popularity` はレース前に入手不可能とみなす。
         - **馬固有情報:** `sex`。
     - **2. 派生特徴量（既存データから計算・加工）:**
         - **馬の年齢 (`age_at_race_years`, `age_at_race_days`):**

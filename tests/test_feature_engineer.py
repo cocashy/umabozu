@@ -101,10 +101,6 @@ class TestGenerateFeatures:
         assert "horse_rolling_rank_mean_5" in result.columns
         assert "horse_rolling_rank_mean_10" in result.columns
 
-        # Check rolling odds features exist
-        assert "horse_rolling_odds_mean_3" in result.columns
-        assert "horse_rolling_odds_mean_5" in result.columns
-
         # Verify no nulls remain (filled with 0)
         for col in result.columns:
             if "rolling" in col:
@@ -245,9 +241,10 @@ class TestGetFeatureCols:
         """Should include critical features for prediction."""
         features = get_feature_cols()
         expected_features = [
-            "odds_win",
-            "popularity",
             "horse_weight",
+            "horse_weight_diff",
+            "weight_carried",
+            "distance",
             "age_at_race_days",
             "jockey_experience_years",
         ]

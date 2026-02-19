@@ -443,14 +443,13 @@ class UmabozuApp:
         """
         Run a backtesting simulation using train/test split and ROI calculation.
 
-        Default behavior: Load a pre-trained model and evaluate on test set.
-        This separates training (train command) from evaluation (simulate command).
+        To prevent leakage, simulate always retrains on the training split and
+        evaluates on the test split. Existing models are not used.
 
         Args:
             test_ratio: Proportion of data to use for testing (default: 0.2)
-            model_path: Path to the trained model to load
-                       (default: trained_models/lgbm_model.pkl)
-            retrain: If True, train a new model instead of loading
+            model_path: Ignored. simulate always retrains to avoid leakage.
+            retrain: Ignored. simulate always retrains to avoid leakage.
             optimize: If True and retrain=True, use Optuna optimization
             n_trials: Number of Optuna trials
                      (only used if retrain=True and optimize=True)
@@ -472,27 +471,17 @@ class UmabozuApp:
             logger.error("Test set is empty. Cannot run backtest.")
             return
 
-        # Load or train model
-        if retrain:
+        if not retrain:
             logger.info(
-                f"Training new model (optimize={optimize}, n_trials={n_trials})..."
+                "simulate always retrains on the training split to avoid leakage; "
+                "ignoring existing model."
             )
-            model = train_model(train_df, optimize=optimize, n_trials=n_trials)
-            logger.info("Model training complete.")
-        else:
-            logger.info(f"Loading pre-trained model from {model_path}...")
-            try:
-                model = load_model(model_path)
-                logger.info("Model loaded successfully.")
-            except FileNotFoundError:
-                logger.error(
-                    f"Model not found at {model_path}. "
-                    "Please run 'train' command first, or use --retrain option."
-                )
-                return
-            except Exception as e:
-                logger.error(f"Error loading model: {e}")
-                return
+
+        logger.info(
+            f"Training new model (optimize={optimize}, n_trials={n_trials})..."
+        )
+        model = train_model(train_df, optimize=optimize, n_trials=n_trials)
+        logger.info("Model training complete.")
         # Predict on test set
         logger.info("Predicting probabilities on test set...")
         feature_cols = get_valid_feature_cols(test_df)

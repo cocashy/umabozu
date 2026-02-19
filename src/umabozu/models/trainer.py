@@ -19,6 +19,9 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
     Trains a LightGBM multi-class classification model,
     optionally with Optuna optimization.
     """
+    if "race_date" in df.columns:
+        df = df.sort("race_date")
+
     # 1. Create Target (0: 1st, 1: 2nd, 3: 4th+)
     df = df.with_columns(
         (pl.col("rank") - 1).alias("target")
