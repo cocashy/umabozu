@@ -47,6 +47,23 @@ def main():
 
     # Train command
     train_parser = subparsers.add_parser("train", help="Train the prediction model")
+    train_parser.add_argument(
+        "--optimize",
+        action="store_true",
+        help="Use Optuna hyperparameter optimization (slower but better accuracy).",
+    )
+    train_parser.add_argument(
+        "--n-trials",
+        type=int,
+        default=20,
+        help="Number of Optuna trials (default: 20). Only used with --optimize.",
+    )
+    train_parser.add_argument(
+        "--test-ratio",
+        type=float,
+        help="Ratio of data to use for testing (e.g., 0.2 for 20%%). "
+        "If specified, data will be split and test performance logged.",
+    )
 
     # Predict command
     predict_parser = subparsers.add_parser(
@@ -78,6 +95,43 @@ def main():
         help="Check for gaps every day (local racing). Default checks weekends.",
     )
 
+    # Simulate command (backtesting)
+    simulate_parser = subparsers.add_parser(
+        "simulate",
+        help="Run backtesting simulation with train/test split and ROI calculation",
+    )
+    simulate_parser.add_argument(
+        "--test-ratio",
+        type=float,
+        default=0.2,
+        help="Ratio of data to use for testing (default: 0.2 = 20%%).",
+    )
+    simulate_parser.add_argument(
+        "--model-path",
+        type=str,
+        default="trained_models/lgbm_model.pkl",
+        help="Path to trained model (default: trained_models/lgbm_model.pkl).",
+    )
+    simulate_parser.add_argument(
+        "--retrain",
+        action="store_true",
+        help="Train a new model instead of loading existing one.",
+    )
+    simulate_parser.add_argument(
+        "--optimize",
+        action="store_true",
+        help="Use Optuna optimization. Only used with --retrain.",
+    )
+    simulate_parser.add_argument(
+        "--n-trials",
+        type=int,
+        default=20,
+        help=(
+            "Number of Optuna trials (default: 20). "
+            "Only used with --retrain --optimize."
+        ),
+    )
+
     args = parser.parse_args()
 
     # Lazy import: only import UmabozuApp when a command is actually being executed
@@ -107,13 +161,25 @@ def main():
             retry_tmp_only=args.retry_tmp_only,
         )
     elif args.command == "train":
-        app.train_latest_model()
+        app.train_latest_model(
+            optimize=args.optimize,
+            n_trials=args.n_trials,
+            test_ratio=args.test_ratio,
+        )
     elif args.command == "predict":
         app.predict_upcoming(target_date=args.target_date)
     elif args.command == "forecast":
         app.forecast_race(race_id=args.race_id)
     elif args.command == "status":
         app.show_db_status(local=args.local)
+    elif args.command == "simulate":
+        app.simulate_backtest(
+            test_ratio=args.test_ratio,
+            model_path=args.model_path,
+            retrain=args.retrain,
+            optimize=args.optimize,
+            n_trials=args.n_trials,
+        )
 
 
 if __name__ == "__main__":

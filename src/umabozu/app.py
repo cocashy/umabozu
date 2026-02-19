@@ -20,6 +20,11 @@ from umabozu.data_collection.scraper import (
     fetch_and_save_race_html,
     fetch_and_save_shutsubahyou_html,
 )
+from umabozu.data_pipeline import (
+    get_valid_feature_cols,
+    prepare_training_data,
+    split_train_test,
+)
 from umabozu.data_preprocessing.data_loader import load_data_from_db
 from umabozu.data_preprocessing.feature_engineer import (
     generate_features,
@@ -241,14 +246,34 @@ class UmabozuApp:
         collect_profiles()
         logger.info("Data update complete.")
 
-    def train_latest_model(self):
-        """Retrain the model using all data in the database."""
-        logger.info("Loading data for training...")
-        df = get_training_data()
-        df = clean_data(df)
-        df = generate_features(df)
-        logger.info(f"Training model on {len(df)} samples...")
-        model = train_model(df, optimize=False)
+    def train_latest_model(self, optimize=False, n_trials=20, test_ratio=None):
+        """Retrain the model using all data in the database.
+
+        Args:
+            optimize: If True, use Optuna to optimize hyperparameters
+            n_trials: Number of Optuna trials (only used if optimize=True)
+            test_ratio: If provided (e.g., 0.2), split data for evaluation.
+                       If None, use all data for training (production mode).
+        """
+        logger.info("Preparing training data...")
+        df = prepare_training_data(use_db_optimized=True)
+
+        if df.is_empty():
+            logger.error("No data available for training.")
+            return
+
+        if test_ratio is not None:
+            train_df, test_df = split_train_test(df, test_ratio)
+            logger.info(f"Training model on {len(train_df)} samples...")
+            model = train_model(train_df, optimize=optimize, n_trials=n_trials)
+
+            # Optional: Evaluate on test set
+            if not test_df.is_empty():
+                logger.info(f"Test set contains {len(test_df)} samples.")
+        else:
+            logger.info(f"Training model on {len(df)} samples (all data)...")
+            model = train_model(df, optimize=optimize, n_trials=n_trials)
+
         save_model(model, "trained_models/lgbm_model.pkl")
         logger.info("Model training complete and saved.")
 
@@ -273,7 +298,7 @@ class UmabozuApp:
 
         df = clean_data(df)
         df = generate_features(df)
-        feature_cols = [col for col in get_feature_cols() if col in df.columns]
+        feature_cols = get_valid_feature_cols(df)
 
         probas = predict_probabilities(model, df, feature_cols)
         df_ev = calculate_expected_value(probas, df)
@@ -394,20 +419,24 @@ class UmabozuApp:
 
         upcoming_df = pl.DataFrame(runners)
 
-        full_training_data = get_training_data()
+        # Use common pipeline for historical data
+        full_training_data = prepare_training_data(use_db_optimized=True)
+
+        # Align schema
         for col in upcoming_df.columns:
             if col in full_training_data.columns:
                 upcoming_df = upcoming_df.with_columns(
                     pl.col(col).cast(full_training_data.schema[col])
                 )
 
+        # Combine and generate features for the target race
         all_data = pl.concat([full_training_data, upcoming_df], how="diagonal")
         all_data = clean_data(all_data)
         all_data = generate_features(all_data)
 
         target_df = all_data.filter(pl.col("race_id") == race_id)
         model = load_model("trained_models/lgbm_model.pkl")
-        feature_cols = [col for col in get_feature_cols() if col in target_df.columns]
+        feature_cols = get_valid_feature_cols(target_df)
         probas = predict_probabilities(model, target_df, feature_cols)
         df_ev = calculate_expected_value(probas, target_df)
         recommendations = simulate_betting(
@@ -470,3 +499,125 @@ class UmabozuApp:
                     f"馬番: {h_num:>2} | {h_name} (人気: {h_pop}) | "
                     f"期待値: {ev:.2f} | 単勝: {odds} | 勝率: {prob * 100:.1f}%"
                 )
+
+    def simulate_backtest(
+        self,
+        test_ratio=0.2,
+        model_path="trained_models/lgbm_model.pkl",
+        retrain=False,
+        optimize=False,
+        n_trials=20,
+    ):
+        """
+        Run a backtesting simulation using train/test split and ROI calculation.
+
+        Default behavior: Load a pre-trained model and evaluate on test set.
+        This separates training (train command) from evaluation (simulate command).
+
+        Args:
+            test_ratio: Proportion of data to use for testing (default: 0.2)
+            model_path: Path to the trained model to load
+                       (default: trained_models/lgbm_model.pkl)
+            retrain: If True, train a new model instead of loading
+            optimize: If True and retrain=True, use Optuna optimization
+            n_trials: Number of Optuna trials
+                     (only used if retrain=True and optimize=True)
+        """
+        logger.info("--- Starting Backtest Simulation ---")
+
+        # Load and prepare data
+        logger.info("Preparing data...")
+        df = prepare_training_data(use_db_optimized=True)
+
+        if df.is_empty():
+            logger.error("No data available for backtesting.")
+            return
+
+        # Split data
+        train_df, test_df = split_train_test(df, test_ratio)
+
+        if test_df.is_empty():
+            logger.error("Test set is empty. Cannot run backtest.")
+            return
+
+        # Load or train model
+        if retrain:
+            logger.info(
+                f"Training new model (optimize={optimize}, n_trials={n_trials})..."
+            )
+            model = train_model(train_df, optimize=optimize, n_trials=n_trials)
+            logger.info("Model training complete.")
+        else:
+            logger.info(f"Loading pre-trained model from {model_path}...")
+            try:
+                model = load_model(model_path)
+                logger.info("Model loaded successfully.")
+            except FileNotFoundError:
+                logger.error(
+                    f"Model not found at {model_path}. "
+                    "Please run 'train' command first, or use --retrain option."
+                )
+                return
+            except Exception as e:
+                logger.error(f"Error loading model: {e}")
+                return
+        # Predict on test set
+        logger.info("Predicting probabilities on test set...")
+        feature_cols = get_valid_feature_cols(test_df)
+        predicted_probas_df = predict_probabilities(model, test_df, feature_cols)
+
+        # Calculate expected value
+        logger.info("Calculating expected values...")
+        df_with_ev = calculate_expected_value(predicted_probas_df, test_df)
+
+        # Simulate betting
+        logger.info(
+            f"Simulating betting (EV > {self.ev_threshold}, "
+            f"Prob > {self.min_probability})..."
+        )
+        selected_bets = simulate_betting(
+            df_with_ev,
+            ev_threshold=self.ev_threshold,
+            min_probability=self.min_probability,
+        )
+
+        # Calculate payout and ROI
+        from umabozu.simulation.bet_simulator import calculate_payout
+
+        investment, total_payout, roi = calculate_payout(selected_bets)
+
+        # Display results
+        logger.info("\n" + "=" * 60)
+        logger.info("BACKTEST RESULTS")
+        logger.info("=" * 60)
+
+        if not test_df.is_empty() and "race_date" in test_df.columns:
+            test_start = test_df.select("race_date").min().item()
+            test_end = test_df.select("race_date").max().item()
+            logger.info(f"Test period: {test_start} to {test_end}")
+
+        logger.info(f"Total races: {test_df.select('race_id').n_unique():,}")
+        logger.info(f"Total horses evaluated: {len(test_df):,}")
+        logger.info(f"Horses meeting criteria: {len(df_with_ev):,}")
+        logger.info(f"Bets placed: {len(selected_bets):,}")
+        logger.info("-" * 60)
+
+        if not selected_bets.is_empty():
+            logger.info(f"Total investment: {investment:,.0f} JPY")
+            logger.info(f"Total payout: {total_payout:,.0f} JPY")
+            logger.info(f"Net profit: {total_payout - investment:,.0f} JPY")
+            logger.info(f"Return on Investment (ROI): {roi:.2f}%")
+
+            # Additional statistics
+            wins = selected_bets.filter(pl.col("rank") == 1)
+            win_count = len(wins)
+            hit_rate = (
+                (win_count / len(selected_bets) * 100) if len(selected_bets) > 0 else 0
+            )
+            logger.info(f"Winning bets: {win_count} / {len(selected_bets)}")
+            logger.info(f"Hit rate: {hit_rate:.2f}%")
+        else:
+            logger.info("No bets were placed with the current criteria.")
+
+        logger.info("=" * 60)
+        logger.info("--- Backtest Simulation Complete ---\n")

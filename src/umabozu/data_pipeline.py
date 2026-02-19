@@ -8,8 +8,12 @@ from umabozu.data_collection.batch_collector import (  # TID252
     collect_races,
 )
 from umabozu.data_preprocessing.data_loader import load_data_from_db
-from umabozu.data_preprocessing.feature_engineer import generate_features
+from umabozu.data_preprocessing.feature_engineer import (
+    generate_features,
+    get_feature_cols,
+)
 from umabozu.data_preprocessing.preprocessor import clean_data
+from umabozu.database.crud import get_training_data
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,82 @@ def display_pipeline_overview(df: pl.DataFrame):
     logger.info("\nFirst 5 rows of the processed DataFrame:")
     logger.info(df.head())
     logger.info("\n--- Overview Complete ---")
+
+
+def prepare_training_data(use_db_optimized: bool = True) -> pl.DataFrame:
+    """
+    Load, clean, and generate features for training data.
+    This is a common pipeline used across multiple commands.
+
+    Args:
+        use_db_optimized: If True, use get_training_data() which may have
+                         optimized queries. If False, use load_data_from_db().
+
+    Returns:
+        Processed DataFrame ready for training or prediction.
+    """
+    logger.info("Loading data from database...")
+    df = get_training_data() if use_db_optimized else load_data_from_db()
+
+    if df.is_empty():
+        logger.warning("No data loaded from database.")
+        return df
+
+    logger.info(f"Raw data loaded. Shape: {df.shape}")
+
+    logger.info("Cleaning data...")
+    df = clean_data(df)
+    logger.info(f"Data cleaned. Shape: {df.shape}")
+
+    logger.info("Generating features...")
+    df = generate_features(df)
+    logger.info(f"Features generated. Shape: {df.shape}")
+
+    return df
+
+
+def split_train_test(
+    df: pl.DataFrame, test_ratio: float = 0.2
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """
+    Split DataFrame into train and test sets based on race_date.
+    Ensures temporal order is preserved (older data for training, newer for testing).
+
+    Args:
+        df: Input DataFrame sorted or unsorted by race_date
+        test_ratio: Proportion of data to use for testing (default: 0.2)
+
+    Returns:
+        Tuple of (train_df, test_df)
+    """
+    if df.is_empty():
+        return df, df
+
+    # Sort by race_date to ensure temporal order
+    df = df.sort("race_date")
+
+    split_idx = int(len(df) * (1 - test_ratio))
+    train_df = df.head(split_idx)
+    test_df = df.tail(len(df) - split_idx)
+
+    logger.info(
+        f"Data split: {len(train_df)} training samples, {len(test_df)} test samples"
+    )
+
+    return train_df, test_df
+
+
+def get_valid_feature_cols(df: pl.DataFrame) -> list[str]:
+    """
+    Get the list of feature columns that actually exist in the DataFrame.
+
+    Args:
+        df: DataFrame to check for feature columns
+
+    Returns:
+        List of feature column names that exist in df
+    """
+    return [col for col in get_feature_cols() if col in df.columns]
 
 
 if __name__ == "__main__":
