@@ -75,12 +75,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
                     x_train,
                     y_train,
                     eval_set=[(x_val, y_val)],
-                    callbacks=[
-                        lgb.early_stopping(stopping_rounds=50),
-                        optuna.integration.LightGBMPruningCallback(
-                            trial, "multi_logloss"
-                        ),
-                    ],
+                    callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
                 )
                 preds = model.predict_proba(x_val)
                 logloss_scores.append(log_loss(y_val, preds))
