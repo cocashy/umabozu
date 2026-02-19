@@ -479,4 +479,8 @@ class TestDataPipelineIntegration:
         # Verification
         assert len(train) == 80
         assert len(test) == 20
-        assert train["race_date"].max() < test["race_date"].min()
+        train_max = train["race_date"].max()
+        test_min = test["race_date"].min()
+        assert isinstance(train_max, datetime.date)
+        assert isinstance(test_min, datetime.date)
+        assert train_max < test_min
