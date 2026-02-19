@@ -171,10 +171,6 @@ def insert_race(data: dict[str, Any]):
     _insert_data("races", data, upsert=True, conflict_target="race_id")
 
 
-def insert_races(data_list: list[dict[str, Any]]):
-    _insert_many_data("races", data_list, upsert=True, conflict_target="race_id")
-
-
 def insert_horse(data: dict[str, Any]):
     _insert_data("horses", data, upsert=True, conflict_target="horse_id")
 
@@ -191,24 +187,8 @@ def insert_jockeys(data_list: list[dict[str, Any]]):
     _insert_many_data("jockeys", data_list, upsert=True, conflict_target="jockey_id")
 
 
-def insert_trainer(data: dict[str, Any]):
-    _insert_data("trainers", data, upsert=True)
-
-
-def insert_owner(data: dict[str, Any]):
-    _insert_data("owners", data, upsert=True)
-
-
-def insert_result(data: dict[str, Any]):
-    _insert_data("results", data)
-
-
 def insert_results(data_list: list[dict[str, Any]]):
     _insert_many_data("results", data_list)
-
-
-def insert_staged_race_id(race_id: str):
-    _insert_many_data("staged_race_ids", [{"race_id": race_id}])
 
 
 def insert_staged_race_ids(race_ids: list[str]):
