@@ -289,9 +289,7 @@ class TestGetValidFeatureCols:
         assert len(result) == 0
 
     @patch("umabozu.data_pipeline.get_feature_cols")
-    def test_get_valid_feature_cols_empty_features_list(
-        self, mock_get_feature_cols
-    ):
+    def test_get_valid_feature_cols_empty_features_list(self, mock_get_feature_cols):
         """Should handle empty features list."""
         df = pl.DataFrame({"col1": [1, 2], "col2": [3, 4]})
 
