@@ -3,6 +3,7 @@ import sys
 from typing import Any
 
 import joblib
+import pandas as pd
 import polars as pl
 from sklearn.base import BaseEstimator
 
@@ -36,7 +37,8 @@ def predict_probabilities(
         if col not in df.columns:
             df = df.with_columns(pl.lit(0.0).alias(col))
 
-    x_pred = df.select(feature_cols).to_pandas()
+    x_pred = df.select(feature_cols).to_numpy()
+    x_pred = pd.DataFrame(x_pred, columns=feature_cols)
     probabilities = model.predict_proba(x_pred)
 
     return pl.DataFrame(
@@ -96,8 +98,9 @@ if __name__ == "__main__":
     feature_cols = [
         col for col in get_feature_cols() if col in train_df_processed.columns
     ]
-    x_train = train_df_processed.select(feature_cols).to_pandas()
-    y_train = train_df_processed.select("rank").to_pandas().values.flatten()
+    x_train = train_df_processed.select(feature_cols).to_numpy()
+    x_train = pd.DataFrame(x_train, columns=feature_cols)
+    y_train = train_df_processed.select("rank").to_numpy().flatten()
 
     # Use a simple LightGBM model for demonstration
     import lightgbm as lgb

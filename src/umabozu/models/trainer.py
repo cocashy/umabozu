@@ -5,6 +5,7 @@ from typing import Any
 
 import lightgbm as lgb
 import optuna
+import pandas as pd
 import polars as pl
 from sklearn.metrics import log_loss
 from sklearn.model_selection import StratifiedKFold, TimeSeriesSplit
@@ -33,8 +34,9 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
     from umabozu.data_preprocessing.feature_engineer import get_feature_cols
 
     feature_cols = [col for col in get_feature_cols() if col in df.columns]
-    x_data = df.select(feature_cols).to_pandas()
-    y_data = df.select("target").to_pandas().values.flatten()
+    x_data = df.select(feature_cols).to_numpy()
+    x_data = pd.DataFrame(x_data, columns=feature_cols)
+    y_data = df.select("target").to_numpy().flatten()
 
     if optimize:
         logger.info("Starting Optuna optimization for LightGBM...")
