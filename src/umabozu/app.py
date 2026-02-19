@@ -441,7 +441,7 @@ class UmabozuApp:
         n_trials=20,
     ):
         """
-        Run a backtesting simulation using train/test split and ROI calculation.
+        Run a backtesting simulation using train/test split and recovery rate.
 
         To prevent leakage, simulate always retrains on the training split and
         evaluates on the test split. Existing models are not used.
@@ -500,10 +500,10 @@ class UmabozuApp:
             min_probability=self.min_probability,
         )
 
-        # Calculate payout and ROI
+        # Calculate payout and recovery rate
         from umabozu.simulation.bet_simulator import calculate_payout
 
-        investment, total_payout, roi = calculate_payout(selected_bets)
+        investment, total_payout, recovery_rate = calculate_payout(selected_bets)
 
         # Display results
         logger.info("\n" + "=" * 60)
@@ -525,7 +525,7 @@ class UmabozuApp:
             logger.info(f"Total investment: {investment:,.0f} JPY")
             logger.info(f"Total payout: {total_payout:,.0f} JPY")
             logger.info(f"Net profit: {total_payout - investment:,.0f} JPY")
-            logger.info(f"Return on Investment (ROI): {roi:.2f}%")
+            logger.info(f"回収率: {recovery_rate:.2f}%")
 
             # Additional statistics
             wins = selected_bets.filter(pl.col("rank") == 1)
