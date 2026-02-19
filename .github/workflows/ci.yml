@@ -37,4 +37,4 @@ jobs:
       run: uv run ty check
 
     - name: Run Tests
-      run: uv run pytest tests/ -v --cov=src/umabozu --cov-report=term-missing
+      run: uv run pytest tests/ -v --cov=src/umabozu --cov-report=term-missing --cov-config=pyproject.toml
