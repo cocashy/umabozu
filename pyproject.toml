@@ -24,6 +24,8 @@ license = { text = "MIT" } # 仮のライセンス
 
 [project.optional-dependencies]
 dev = [
+    "pytest",
+    "pytest-cov",
     "types-beautifulsoup4",
     "types-html5lib",
     "types-requests",
