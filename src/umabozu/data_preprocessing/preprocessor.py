@@ -29,8 +29,10 @@ def clean_data(df: pl.DataFrame) -> pl.DataFrame:
             col_type = df.schema.get(col)
             # Only convert if it's a String type (not already Date)
             if col_type == pl.String:
-                date_conversions.append(pl.col(col).str.to_date("%Y-%m-%d", strict=False))
-    
+                date_conversions.append(
+                    pl.col(col).str.to_date("%Y-%m-%d", strict=False)
+                )
+
     if date_conversions:
         df = df.with_columns(*date_conversions)
 

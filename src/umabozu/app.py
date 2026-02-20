@@ -356,46 +356,48 @@ class UmabozuApp:
 
         # Enrich upcoming_df with detailed information from historical data
         logger.info("Enriching upcoming race data with horse/jockey profiles...")
-        
+
         # Get horse and jockey details from full_training_data
-        horse_details = (
-            full_training_data.select([
-                "horse_id", "horse_birth_date", "horse_weight"
-            ])
-            .unique(subset=["horse_id"])
+        horse_details = full_training_data.select(
+            ["horse_id", "horse_birth_date", "horse_weight"]
+        ).unique(subset=["horse_id"])
+        jockey_details = full_training_data.select(["jockey_id", "debut_date"]).unique(
+            subset=["jockey_id"]
         )
-        jockey_details = (
-            full_training_data.select([
-                "jockey_id", "debut_date"
-            ])
-            .unique(subset=["jockey_id"])
-        )
-        
+
         # Merge details into upcoming_df
-        upcoming_df = upcoming_df.join(
-            horse_details, on="horse_id", how="left"
-        ).join(
+        upcoming_df = upcoming_df.join(horse_details, on="horse_id", how="left").join(
             jockey_details, on="jockey_id", how="left"
         )
-        
+
         # Add missing columns with default values, using correct dtypes
         missing_cols = set(full_training_data.columns) - set(upcoming_df.columns)
         for col in missing_cols:
             col_dtype = full_training_data.schema.get(col)
             if col_dtype == pl.String:
-                upcoming_df = upcoming_df.with_columns(pl.lit("").alias(col).cast(pl.String))
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit("").alias(col).cast(pl.String)
+                )
             elif col_dtype == pl.Int64:
-                upcoming_df = upcoming_df.with_columns(pl.lit(0, dtype=pl.Int64).alias(col))
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(0, dtype=pl.Int64).alias(col)
+                )
             elif col_dtype == pl.Float64:
-                upcoming_df = upcoming_df.with_columns(pl.lit(0.0, dtype=pl.Float64).alias(col))
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(0.0, dtype=pl.Float64).alias(col)
+                )
             elif col_dtype == pl.Date:
-                upcoming_df = upcoming_df.with_columns(pl.lit(date(2020, 1, 1), dtype=pl.Date).alias(col))
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(date(2020, 1, 1), dtype=pl.Date).alias(col)
+                )
             else:
-                upcoming_df = upcoming_df.with_columns(pl.lit(None, dtype=col_dtype).alias(col))
-        
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(None, dtype=col_dtype).alias(col)
+                )
+
         # Ensure column order matches full_training_data
         upcoming_df = upcoming_df.select(full_training_data.columns)
-        
+
         # Cast all columns to match full_training_data schema exactly
         for col in upcoming_df.columns:
             expected_dtype = full_training_data.schema.get(col)
