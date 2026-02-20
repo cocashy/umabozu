@@ -354,17 +354,61 @@ class UmabozuApp:
         # Use common pipeline for historical data
         full_training_data = prepare_training_data(use_db_optimized=True)
 
-        # Align schema
-        for col in upcoming_df.columns:
-            if col in full_training_data.columns:
+        # Enrich upcoming_df with detailed information from historical data
+        logger.info("Enriching upcoming race data with horse/jockey profiles...")
+
+        # Get horse and jockey details from full_training_data
+        horse_details = full_training_data.select(
+            ["horse_id", "horse_birth_date", "horse_weight"]
+        ).unique(subset=["horse_id"])
+        jockey_details = full_training_data.select(["jockey_id", "debut_date"]).unique(
+            subset=["jockey_id"]
+        )
+
+        # Merge details into upcoming_df
+        upcoming_df = upcoming_df.join(horse_details, on="horse_id", how="left").join(
+            jockey_details, on="jockey_id", how="left"
+        )
+
+        # Add missing columns with default values, using correct dtypes
+        missing_cols = set(full_training_data.columns) - set(upcoming_df.columns)
+        for col in missing_cols:
+            col_dtype = full_training_data.schema.get(col)
+            if col_dtype == pl.String:
                 upcoming_df = upcoming_df.with_columns(
-                    pl.col(col).cast(full_training_data.schema[col])
+                    pl.lit("").alias(col).cast(pl.String)
+                )
+            elif col_dtype == pl.Int64:
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(0, dtype=pl.Int64).alias(col)
+                )
+            elif col_dtype == pl.Float64:
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(0.0, dtype=pl.Float64).alias(col)
+                )
+            elif col_dtype == pl.Date:
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(date(2020, 1, 1), dtype=pl.Date).alias(col)
+                )
+            else:
+                upcoming_df = upcoming_df.with_columns(
+                    pl.lit(None, dtype=col_dtype).alias(col)
                 )
 
-        # Combine and generate features for the target race
-        all_data = pl.concat([full_training_data, upcoming_df], how="diagonal")
-        all_data = clean_data(all_data)
-        all_data = generate_features(all_data)
+        # Ensure column order matches full_training_data
+        upcoming_df = upcoming_df.select(full_training_data.columns)
+
+        # Cast all columns to match full_training_data schema exactly
+        for col in upcoming_df.columns:
+            expected_dtype = full_training_data.schema.get(col)
+            current_dtype = upcoming_df.schema.get(col)
+            if expected_dtype and current_dtype != expected_dtype:
+                upcoming_df = upcoming_df.with_columns(
+                    pl.col(col).cast(expected_dtype, strict=False)
+                )
+
+        # Combine for the target race analysis
+        all_data = pl.concat([full_training_data, upcoming_df], how="vertical")
 
         target_df = all_data.filter(pl.col("race_id") == race_id)
         model = load_model("trained_models/lgbm_model.pkl")
