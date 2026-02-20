@@ -16,12 +16,23 @@ def clean_data(df: pl.DataFrame) -> pl.DataFrame:
     # Convert date strings to Date type
     # For race_date, birth_date, debut_date, ensure they are in YYYY-MM-DD format
     # then convert to Date. Errors as null.
-    df = df.with_columns(
-        pl.col("race_date").str.to_date("%Y-%m-%d", strict=False),
-        pl.col("horse_birth_date").str.to_date("%Y-%m-%d", strict=False),
-        pl.col("jockey_birth_date").str.to_date("%Y-%m-%d", strict=False),
-        pl.col("debut_date").str.to_date("%Y-%m-%d", strict=False),
-    )
+    # Only convert if the column is String type (skip if already Date type)
+    date_cols = [
+        "race_date",
+        "horse_birth_date",
+        "jockey_birth_date",
+        "debut_date",
+    ]
+    date_conversions = []
+    for col in date_cols:
+        if col in df.columns:
+            col_type = df.schema.get(col)
+            # Only convert if it's a String type (not already Date)
+            if col_type == pl.String:
+                date_conversions.append(pl.col(col).str.to_date("%Y-%m-%d", strict=False))
+    
+    if date_conversions:
+        df = df.with_columns(*date_conversions)
 
     # Convert numeric columns, coercing errors to null
     numeric_cols = [
