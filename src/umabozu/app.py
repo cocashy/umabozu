@@ -26,10 +26,7 @@ from umabozu.data_pipeline import (
     split_train_test,
 )
 from umabozu.data_preprocessing.data_loader import load_data_from_db
-from umabozu.data_preprocessing.feature_engineer import (
-    generate_features,
-    get_feature_cols,
-)
+from umabozu.data_preprocessing.feature_engineer import generate_features
 from umabozu.data_preprocessing.preprocessor import clean_data
 from umabozu.database.crud import (
     get_db_connection,
@@ -38,18 +35,29 @@ from umabozu.database.crud import (
     insert_horse,
     insert_jockey,
 )
-from umabozu.models.predictor import load_model, predict_probabilities, save_model
+from umabozu.models.predictor import (
+    attach_win_probability,
+    load_model,
+    predict_probabilities,
+    save_model,
+)
 from umabozu.models.trainer import train_model
-from umabozu.simulation.bet_simulator import simulate_betting
-from umabozu.simulation.odds_calculator import calculate_expected_value
+from umabozu.simulation.bet_simulator import (
+    calculate_payout,
+    select_bets_by_probability,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class UmabozuApp:
     def __init__(self):
-        self.ev_threshold = 1.1
-        self.min_probability = 0.13
+        self.min_probability = float(
+            os.getenv("UMABOZU_MIN_WIN_PROBABILITY", "0.13")
+        )
+        if not 0.0 <= self.min_probability <= 1.0:
+            raise ValueError("UMABOZU_MIN_WIN_PROBABILITY must be between 0 and 1.")
+        self.max_bets_per_race = 1
 
     def show_db_status(self, local=False):
         """Display database statistics and detect missing data points."""
@@ -414,9 +422,11 @@ class UmabozuApp:
         model = load_model("trained_models/lgbm_model.pkl")
         feature_cols = get_valid_feature_cols(target_df)
         probas = predict_probabilities(model, target_df, feature_cols)
-        df_ev = calculate_expected_value(probas, target_df)
-        recommendations = simulate_betting(
-            df_ev, ev_threshold=self.ev_threshold, min_probability=self.min_probability
+        predictions = attach_win_probability(target_df, probas)
+        recommendations = select_bets_by_probability(
+            predictions,
+            min_probability=self.min_probability,
+            max_bets_per_race=self.max_bets_per_race,
         )
 
         r_name = race_info.get("race_name", "Unknown Race")
@@ -424,56 +434,39 @@ class UmabozuApp:
         logger.info(f"\n--- Forecast: {r_num} {r_name} ({race_id}) ---")
 
         if recommendations.is_empty():
-            logger.info("No high-confidence bets found.")
+            logger.info(
+                "No horse met the minimum win probability "
+                f"({self.min_probability:.1%})."
+            )
         else:
             logger.info(
-                f"Showing recommendations (EV > {self.ev_threshold}"
-                f" and Win Prob > {self.min_probability}):"
+                "Showing the highest win-probability horse(s) per race "
+                f"(minimum win probability: {self.min_probability:.1%}; "
+                f"maximum bets per race: {self.max_bets_per_race})."
             )
 
-            display_df = (
-                recommendations.join(
-                    df_ev.select(
-                        ["race_id", "horse_id", "expected_value", "win_probability"]
-                    ),
-                    on=["race_id", "horse_id"],
-                    how="inner",
-                )
-                .join(
-                    upcoming_df.select(
-                        [
-                            c
-                            for c in [
-                                "race_id",
-                                "horse_id",
-                                "horse_name",
-                                "horse_number",
-                                "popularity",
-                                "odds_win",
-                            ]
-                            if c in upcoming_df.columns
-                        ]
-                    ),
-                    on=["race_id", "horse_id"],
-                    how="inner",
-                )
-                .unique(subset=["horse_id"])
+            display_cols = [
+                col
+                for col in [
+                    "race_id",
+                    "horse_id",
+                    "horse_number",
+                    "horse_name",
+                    "win_probability",
+                ]
+                if col in recommendations.columns
+            ]
+            display_df = recommendations.select(display_cols).sort(
+                "win_probability", descending=True
             )
-
-            display_df = display_df.filter(
-                pl.col("expected_value") >= self.ev_threshold
-            ).sort("expected_value", descending=True)
 
             for row in display_df.to_dicts():
                 h_num = row.get("horse_number", "??")
                 h_name = row.get("horse_name", "Unknown")
-                h_pop = row.get("popularity", "?")
-                ev = row.get("expected_value", 0.0)
-                odds = row.get("odds_win", 0.0)
                 prob = row.get("win_probability", 0.0)
                 logger.info(
-                    f"馬番: {h_num:>2} | {h_name} (人気: {h_pop}) | "
-                    f"期待値: {ev:.2f} | 単勝: {odds} | 勝率: {prob * 100:.1f}%"
+                    f"馬番: {h_num:>2} | {h_name} | "
+                    f"予測勝率: {prob * 100:.1f}%"
                 )
 
     def simulate_backtest(
@@ -528,25 +521,22 @@ class UmabozuApp:
         logger.info("Predicting probabilities on test set...")
         feature_cols = get_valid_feature_cols(test_df)
         predicted_probas_df = predict_probabilities(model, test_df, feature_cols)
+        predictions = attach_win_probability(test_df, predicted_probas_df)
 
-        # Calculate expected value
-        logger.info("Calculating expected values...")
-        df_with_ev = calculate_expected_value(predicted_probas_df, test_df)
-
-        # Simulate betting
+        # Select using only predicted win probability; odds are reserved for
+        # calculating realized payouts after the selections have been made.
         logger.info(
-            f"Simulating betting (EV > {self.ev_threshold}, "
-            f"Prob > {self.min_probability})..."
+            "Selecting by win probability only "
+            f"(minimum {self.min_probability:.1%}, "
+            f"maximum {self.max_bets_per_race} bet(s) per race)..."
         )
-        selected_bets = simulate_betting(
-            df_with_ev,
-            ev_threshold=self.ev_threshold,
+        selected_bets = select_bets_by_probability(
+            predictions,
             min_probability=self.min_probability,
+            max_bets_per_race=self.max_bets_per_race,
         )
 
         # Calculate payout and recovery rate
-        from umabozu.simulation.bet_simulator import calculate_payout
-
         investment, total_payout, recovery_rate = calculate_payout(selected_bets)
 
         # Display results
@@ -561,7 +551,10 @@ class UmabozuApp:
 
         logger.info(f"Total races: {test_df.select('race_id').n_unique():,}")
         logger.info(f"Total horses evaluated: {len(test_df):,}")
-        logger.info(f"Horses meeting criteria: {len(df_with_ev):,}")
+        logger.info(
+            "Horses meeting minimum win probability: "
+            f"{predictions.filter(pl.col('win_probability') >= self.min_probability).height:,}"
+        )
         logger.info(f"Bets placed: {len(selected_bets):,}")
         logger.info("-" * 60)
 

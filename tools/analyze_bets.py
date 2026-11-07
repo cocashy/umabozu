@@ -13,9 +13,11 @@ from umabozu.data_preprocessing.feature_engineer import (
     get_feature_cols,
 )
 from umabozu.data_preprocessing.preprocessor import clean_data
-from umabozu.models.predictor import predict_probabilities
-from umabozu.simulation.bet_simulator import calculate_payout, simulate_betting
-from umabozu.simulation.odds_calculator import calculate_expected_value
+from umabozu.models.predictor import attach_win_probability, predict_probabilities
+from umabozu.simulation.bet_simulator import (
+    calculate_payout,
+    select_bets_by_probability,
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -33,13 +35,12 @@ def analyze_model_behavior(
     # Predict probabilities
     probas_df = predict_probabilities(model, test_df, feature_cols)
 
-    # Calculate expected value
-    df_with_ev = calculate_expected_value(probas_df, test_df)
+    predictions = attach_win_probability(test_df, probas_df)
 
-    # Simulate betting with default thresholds
-    # (EV > 1.1, Win Prob > 0.13 - as identified in project knowledge)
-    simulated_bets = simulate_betting(
-        df_with_ev, ev_threshold=1.1, min_probability=0.13
+    # Use the same cutoff as live forecasts; odds are not a selection input.
+    min_probability = float(os.getenv("UMABOZU_MIN_WIN_PROBABILITY", "0.13"))
+    simulated_bets = select_bets_by_probability(
+        predictions, min_probability=min_probability, max_bets_per_race=1
     )
 
     investment, payout, roi = calculate_payout(simulated_bets)

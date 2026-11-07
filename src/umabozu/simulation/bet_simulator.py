@@ -7,10 +7,54 @@ import polars as pl
 from umabozu.data_preprocessing.data_loader import load_data_from_db  # TID252
 from umabozu.data_preprocessing.feature_engineer import generate_features
 from umabozu.data_preprocessing.preprocessor import clean_data
-from umabozu.models.predictor import load_model, predict_probabilities
-from umabozu.simulation.odds_calculator import calculate_expected_value
+from umabozu.models.predictor import (
+    attach_win_probability,
+    load_model,
+    predict_probabilities,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def select_bets_by_probability(
+    predictions: pl.DataFrame,
+    min_probability: float = 0.13,
+    max_bets_per_race: int = 1,
+) -> pl.DataFrame:
+    """Select at most the highest-probability horses per race, without odds."""
+    if not 0.0 <= min_probability <= 1.0:
+        raise ValueError("min_probability must be between 0.0 and 1.0.")
+    if max_bets_per_race < 1:
+        raise ValueError("max_bets_per_race must be at least 1.")
+    if predictions.is_empty():
+        return predictions
+
+    required_cols = {"race_id", "win_probability"}
+    missing_cols = required_cols - set(predictions.columns)
+    if missing_cols:
+        raise ValueError(
+            "Probability selection requires columns: "
+            + ", ".join(sorted(missing_cols))
+        )
+
+    eligible = predictions.filter(
+        pl.col("win_probability").is_not_null()
+        & (pl.col("win_probability") >= min_probability)
+    )
+    if eligible.is_empty():
+        return eligible
+
+    sort_cols = ["race_id", "win_probability"]
+    descending = [False, True]
+    if "horse_id" in eligible.columns:
+        sort_cols.append("horse_id")
+        descending.append(False)
+
+    return (
+        eligible.sort(sort_cols, descending=descending)
+        .group_by("race_id", maintain_order=True)
+        .head(max_bets_per_race)
+    )
 
 
 def simulate_betting(
@@ -19,6 +63,10 @@ def simulate_betting(
     min_probability: float = 0.0,
 ) -> pl.DataFrame:
     """
+    Legacy EV-based selector retained for compatibility with older analysis.
+    Forecasts, current backtests, and strategy tools use
+    :func:`select_bets_by_probability` instead.
+
     Simulates betting by selecting horses whose expected value exceeds a
     given threshold. Also allows filtering by a minimum win probability to
     avoid noisy longshots.
@@ -55,6 +103,8 @@ def calculate_payout(simulated_bets: pl.DataFrame) -> tuple[float, float, float]
 
     for row in simulated_bets.iter_rows(named=True):
         if row["rank"] == 1:
+            # Historical final odds are used only to settle already-selected
+            # bets, never to decide which horses to select.
             total_payout += row["odds_win"] * 100
 
     recovery_rate = (
@@ -109,15 +159,14 @@ if __name__ == "__main__":
     logger.info("Predicting probabilities for test data...")
     probas_df = predict_probabilities(model, test_df_processed, feature_cols)
 
-    # 5. Calculate Expected Value
-    logger.info("Calculating expected values...")
-    df_with_expected_value = calculate_expected_value(probas_df, test_df_processed)
+    # 5. Attach the win probability and select without using odds.
+    predictions = attach_win_probability(test_df_processed, probas_df)
 
     # --- Task: Simulate Betting and Calculate Payout ---
     logger.info("\nSimulating betting...")
-    # Using a high EV threshold for demonstration,
-    # as mock data might not produce high EV
-    selected_bets = simulate_betting(df_with_expected_value, ev_threshold=0.5)
+    selected_bets = select_bets_by_probability(
+        predictions, min_probability=0.13, max_bets_per_race=1
+    )
 
     investment, payout, recovery_rate = calculate_payout(selected_bets)
 
