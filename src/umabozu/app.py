@@ -52,9 +52,7 @@ logger = logging.getLogger(__name__)
 
 class UmabozuApp:
     def __init__(self):
-        self.min_probability = float(
-            os.getenv("UMABOZU_MIN_WIN_PROBABILITY", "0.13")
-        )
+        self.min_probability = float(os.getenv("UMABOZU_MIN_WIN_PROBABILITY", "0.13"))
         if not 0.0 <= self.min_probability <= 1.0:
             raise ValueError("UMABOZU_MIN_WIN_PROBABILITY must be between 0 and 1.")
         self.max_bets_per_race = 1
@@ -465,8 +463,7 @@ class UmabozuApp:
                 h_name = row.get("horse_name", "Unknown")
                 prob = row.get("win_probability", 0.0)
                 logger.info(
-                    f"馬番: {h_num:>2} | {h_name} | "
-                    f"予測勝率: {prob * 100:.1f}%"
+                    f"馬番: {h_num:>2} | {h_name} | 予測勝率: {prob * 100:.1f}%"
                 )
 
     def simulate_backtest(
@@ -551,10 +548,10 @@ class UmabozuApp:
 
         logger.info(f"Total races: {test_df.select('race_id').n_unique():,}")
         logger.info(f"Total horses evaluated: {len(test_df):,}")
-        logger.info(
-            "Horses meeting minimum win probability: "
-            f"{predictions.filter(pl.col('win_probability') >= self.min_probability).height:,}"
-        )
+        eligible_horses = predictions.filter(
+            pl.col("win_probability") >= self.min_probability
+        ).height
+        logger.info(f"Horses meeting minimum win probability: {eligible_horses:,}")
         logger.info(f"Bets placed: {len(selected_bets):,}")
         logger.info("-" * 60)
 

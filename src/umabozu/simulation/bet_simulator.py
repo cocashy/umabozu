@@ -33,8 +33,7 @@ def select_bets_by_probability(
     missing_cols = required_cols - set(predictions.columns)
     if missing_cols:
         raise ValueError(
-            "Probability selection requires columns: "
-            + ", ".join(sorted(missing_cols))
+            "Probability selection requires columns: " + ", ".join(sorted(missing_cols))
         )
 
     eligible = predictions.filter(

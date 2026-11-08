@@ -53,7 +53,10 @@ def optimize_betting_strategy(
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
     best_threshold = float(study.best_params["min_probability"])
-    best_validation_roi = float(study.best_trial.value)
+    best_trial_value = study.best_trial.value
+    if best_trial_value is None:
+        raise RuntimeError("Threshold optimization did not produce an objective value.")
+    best_validation_roi = float(best_trial_value)
     logger.info(
         "Threshold tuning finished: minimum win probability %.3f; "
         "validation ROI %.2f%%",
@@ -74,8 +77,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     full_df = full_df.sort("race_date")
-    race_order = full_df.select(["race_id", "race_date"]).unique().sort(
-        ["race_date", "race_id"]
+    race_order = (
+        full_df.select(["race_id", "race_date"]).unique().sort(["race_date", "race_id"])
     )
     train_end = int(len(race_order) * 0.6)
     validation_end = int(len(race_order) * 0.8)
@@ -116,8 +119,7 @@ if __name__ == "__main__":
     logger.info("\n--- Probability-only strategy on held-out test data ---")
     logger.info("Minimum win probability: %.3f", best_min_probability)
     logger.info(
-        "To use this cutoff for live forecasts, set "
-        "UMABOZU_MIN_WIN_PROBABILITY=%.3f",
+        "To use this cutoff for live forecasts, set UMABOZU_MIN_WIN_PROBABILITY=%.3f",
         best_min_probability,
     )
     logger.info("Validation ROI: %.2f%%", validation_roi)

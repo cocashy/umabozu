@@ -109,8 +109,7 @@ def split_train_test(
     df: pl.DataFrame, test_ratio: float = 0.2
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """
-    Split DataFrame by whole races in chronological order.
-    Every horse from one race stays in the same split.
+    Split chronologically, keeping whole races together when race IDs exist.
 
     Args:
         df: Input DataFrame sorted or unsorted by race_date
@@ -124,18 +123,26 @@ def split_train_test(
 
     if not 0.0 < test_ratio < 1.0:
         raise ValueError("test_ratio must be between 0.0 and 1.0.")
-    required_cols = {"race_id", "race_date"}
-    missing_cols = required_cols - set(df.columns)
-    if missing_cols:
-        raise ValueError(
-            "Chronological race split requires columns: "
-            + ", ".join(sorted(missing_cols))
+    if "race_date" not in df.columns:
+        raise ValueError("Chronological split requires a race_date column.")
+
+    if "race_id" not in df.columns:
+        logger.warning(
+            "race_id is missing; splitting rows by race_date instead of whole races."
         )
+        df = df.sort("race_date")
+        split_idx = int(len(df) * (1 - test_ratio))
+        if split_idx <= 0 or split_idx >= len(df):
+            raise ValueError("Not enough rows to create non-empty train and test sets.")
+        train_df = df.head(split_idx)
+        test_df = df.tail(len(df) - split_idx)
+        logger.info(
+            f"Data split: {len(train_df)} training samples, {len(test_df)} test samples"
+        )
+        return train_df, test_df
 
     df = df.sort(["race_date", "race_id"])
-    races = df.select(["race_id", "race_date"]).unique().sort(
-        ["race_date", "race_id"]
-    )
+    races = df.select(["race_id", "race_date"]).unique().sort(["race_date", "race_id"])
     split_idx = int(len(races) * (1 - test_ratio))
     if split_idx <= 0 or split_idx >= len(races):
         raise ValueError("Not enough races to create non-empty train and test sets.")
