@@ -5,7 +5,9 @@ import sys
 from contextlib import suppress
 from datetime import date, timedelta
 
+import numpy as np
 import polars as pl
+from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 
 # TID252: Prefer absolute imports
 from umabozu.data_collection.batch_collector import collect_profiles, collect_races
@@ -368,6 +370,8 @@ class UmabozuApp:
         # Initialize with None/default to prevent KeyError if parse fails
         for r in runners:
             r["race_id"] = race_id  # Ensure race_id is in each runner dict
+            r["race_number"] = race_info.get("race_number", 0) or 0
+            r["num_of_runners"] = len(runners)
             r["course_type"] = race_info.get("course_type", "芝")
             r["distance"] = race_info.get("distance", 1600)
             r["course_direction"] = race_info.get("course_direction", "右")
@@ -568,6 +572,36 @@ class UmabozuApp:
         feature_cols = get_valid_feature_cols(test_df)
         predicted_probas_df = predict_probabilities(model, test_df, feature_cols)
         predictions = attach_win_probability(test_df, predicted_probas_df)
+
+        actual_wins = (test_df["rank"] == 1).to_numpy().astype(np.int8)
+        win_probabilities = predictions["win_probability"].to_numpy()
+        logger.info(
+            "Win Brier score: %.5f", brier_score_loss(actual_wins, win_probabilities)
+        )
+        logger.info(
+            "Win log loss: %.5f",
+            log_loss(
+                actual_wins,
+                np.column_stack((1.0 - win_probabilities, win_probabilities)),
+                labels=[0, 1],
+            ),
+        )
+        if np.unique(actual_wins).size == 2:
+            logger.info(
+                "Win ROC-AUC: %.4f",
+                roc_auc_score(actual_wins, win_probabilities),
+            )
+
+        top_predictions = (
+            predictions.sort(["race_id", "win_probability"], descending=[False, True])
+            .group_by("race_id", maintain_order=True)
+            .head(1)
+        )
+        top_one_wins = top_predictions.filter(pl.col("rank") == 1).height
+        top_one_hit_rate = (
+            top_one_wins / top_predictions.height * 100 if top_predictions.height else 0
+        )
+        logger.info("Top-probability horse win rate: %.2f%%", top_one_hit_rate)
 
         # Select using only predicted win probability; odds are reserved for
         # calculating realized payouts after the selections have been made.

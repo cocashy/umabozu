@@ -15,10 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> Any:
-    """
-    Trains a LightGBM multi-class classification model,
-    optionally with Optuna optimization.
-    """
+    """Train a LightGBM model to estimate each runner's win probability."""
     if "race_date" in df.columns:
         sort_cols = ["race_date"]
         sort_cols.extend(
@@ -26,16 +23,14 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
         )
         df = df.sort(sort_cols, maintain_order=True)
 
-    # 1. Create Target (0: 1st, 1: 2nd, 3: 4th+)
+    # Class 0 is a winner; class 1 is every other finisher. Keeping the win
+    # event as the direct target aligns optimization with the forecast output.
     df = df.with_columns(
-        (pl.col("rank") - 1).alias("target")
-    )  # 1st becomes 0, 2nd becomes 1, etc.
-    df = df.with_columns(
-        pl.when(pl.col("target") >= 3)
-        .then(pl.lit(3))
-        .otherwise(pl.col("target"))
+        pl.when(pl.col("rank") == 1)
+        .then(pl.lit(0))
+        .otherwise(pl.lit(1))
         .alias("target")
-    )  # Map 4th+ to 3
+    )
 
     # Define features and target
     from umabozu.data_preprocessing.feature_engineer import (
@@ -74,9 +69,8 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
 
         def objective(trial):
             param = {
-                "objective": "multiclass",
-                "num_class": 4,  # 0, 1, 2, 3
-                "metric": "multi_logloss",
+                "objective": "binary",
+                "metric": "binary_logloss",
                 "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
                 "learning_rate": trial.suggest_float(
                     "learning_rate", 0.01, 0.3, log=True
@@ -110,7 +104,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
                     callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
                 )
                 preds = model.predict_proba(x_val)
-                logloss_scores.append(log_loss(y_val, preds))
+                logloss_scores.append(log_loss(y_val, preds, labels=[0, 1]))
 
             return sum(logloss_scores) / len(logloss_scores)
 
@@ -126,9 +120,8 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
 
         best_params = study.best_params
         model = lgb.LGBMClassifier(  # type: ignore
-            objective="multiclass",
-            num_class=4,
-            metric="multi_logloss",
+            objective="binary",
+            metric="binary_logloss",
             random_state=42,
             n_jobs=-1,
             verbose=-1,
@@ -138,9 +131,8 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
     else:
         logger.info("Training LightGBM model with default parameters...")
         model = lgb.LGBMClassifier(  # type: ignore
-            objective="multiclass",
-            num_class=4,
-            metric="multi_logloss",
+            objective="binary",
+            metric="binary_logloss",
             n_estimators=500,
             learning_rate=0.05,
             num_leaves=31,
@@ -158,6 +150,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
 
     model.fit(x_data, y_data)
     model._umabozu_feature_schema_version = FEATURE_SCHEMA_VERSION
+    model._umabozu_feature_cols = feature_cols
     return model
 
 

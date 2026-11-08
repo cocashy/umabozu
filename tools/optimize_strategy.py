@@ -36,6 +36,7 @@ def optimize_betting_strategy(
 
     probabilities = predict_probabilities(model, validation_df, feature_cols)
     predictions = attach_win_probability(validation_df, probabilities)
+    minimum_bets = max(100, int(validation_df["race_id"].n_unique() * 0.05))
 
     def objective(trial):
         min_probability = trial.suggest_float("min_probability", 0.0, 0.5)
@@ -44,12 +45,15 @@ def optimize_betting_strategy(
             min_probability=min_probability,
             max_bets_per_race=1,
         )
-        if selected_bets.is_empty():
+        if len(selected_bets) < minimum_bets:
             return -100.0
         _, _, roi = calculate_payout(selected_bets)
         return roi
 
-    study = optuna.create_study(direction="maximize")
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(seed=42),
+    )
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
 
     best_threshold = float(study.best_params["min_probability"])
@@ -77,29 +81,25 @@ if __name__ == "__main__":
         sys.exit(1)
 
     full_df = full_df.sort("race_date")
-    race_order = (
-        full_df.select(["race_id", "race_date"]).unique().sort(["race_date", "race_id"])
-    )
-    train_end = int(len(race_order) * 0.6)
-    validation_end = int(len(race_order) * 0.8)
+    date_order = full_df.select("race_date").unique().sort("race_date")
+    train_end = int(len(date_order) * 0.6)
+    validation_end = int(len(date_order) * 0.8)
     if (
         train_end == 0
         or validation_end <= train_end
-        or validation_end >= len(race_order)
+        or validation_end >= len(date_order)
     ):
         logger.error("Not enough data for chronological train/validation/test splits.")
         sys.exit(1)
 
-    train_race_ids = race_order.head(train_end).select("race_id")
-    validation_race_ids = race_order.slice(
-        train_end, validation_end - train_end
-    ).select("race_id")
-    test_race_ids = race_order.tail(len(race_order) - validation_end).select("race_id")
-    train_df = full_df.join(train_race_ids, on="race_id", how="semi")
-    validation_df = full_df.join(validation_race_ids, on="race_id", how="semi")
-    test_df = full_df.join(test_race_ids, on="race_id", how="semi")
+    train_dates = date_order.head(train_end)
+    validation_dates = date_order.slice(train_end, validation_end - train_end)
+    test_dates = date_order.tail(len(date_order) - validation_end)
+    train_df = full_df.join(train_dates, on="race_date", how="semi")
+    validation_df = full_df.join(validation_dates, on="race_date", how="semi")
+    test_df = full_df.join(test_dates, on="race_date", how="semi")
 
-    logger.info("Training the model on the earliest 60% of races...")
+    logger.info("Training on the earliest 60% of dates...")
     model = train_model(train_df, optimize=False)
     feature_cols = [col for col in get_feature_cols() if col in train_df.columns]
 
