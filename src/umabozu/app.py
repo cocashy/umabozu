@@ -597,8 +597,11 @@ class UmabozuApp:
             .group_by("race_id", maintain_order=True)
             .head(1)
         )
-        top_one_hit_rate = (top_predictions["rank"] == 1).mean()
-        logger.info("Top-probability horse win rate: %.2f%%", top_one_hit_rate * 100)
+        top_one_wins = top_predictions.filter(pl.col("rank") == 1).height
+        top_one_hit_rate = (
+            top_one_wins / top_predictions.height * 100 if top_predictions.height else 0
+        )
+        logger.info("Top-probability horse win rate: %.2f%%", top_one_hit_rate)
 
         # Select using only predicted win probability; odds are reserved for
         # calculating realized payouts after the selections have been made.
