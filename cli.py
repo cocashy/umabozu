@@ -94,10 +94,7 @@ def main():
         "--test-ratio",
         type=float,
         default=0.2,
-        help=(
-            "Ratio of distinct race dates to use for testing "
-            "(default: 0.2 = 20%%)."
-        ),
+        help=("Ratio of distinct race dates to use for testing (default: 0.2 = 20%%)."),
     )
     simulate_parser.add_argument(
         "--model-path",

@@ -464,8 +464,8 @@ class TestGetTrainingData:
         # Should have at least one row with valid data
         assert len(df) >= 0  # May be filtered by the query
 
-    def test_get_training_data_filters_unknown_names(self):
-        """Should exclude records with UNKNOWN names."""
+    def test_get_training_data_keeps_unknown_names_when_id_exists(self):
+        """Horse IDs keep records usable even when profile names are unknown."""
         insert_race({"race_id": "race_001"})
         # Insert horse with UNKNOWN name
         insert_horse({"horse_id": "horse_001", "horse_name": "UNKNOWN"})
@@ -483,5 +483,6 @@ class TestGetTrainingData:
 
         df = get_training_data()
 
-        # Should be filtered out due to UNKNOWN horse_name
-        assert df.is_empty()
+        # Names are not history identifiers, so a valid horse ID keeps the row.
+        assert df.height == 1
+        assert df["horse_id"].item() == "horse_001"

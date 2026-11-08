@@ -67,9 +67,7 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
             pl.when(valid_horse_id)
             .then(pl.concat_str([pl.lit("horse:"), horse_id]))
             .otherwise(
-                pl.concat_str(
-                    [pl.lit("row:"), pl.col(row_index_col).cast(pl.String)]
-                )
+                pl.concat_str([pl.lit("row:"), pl.col(row_index_col).cast(pl.String)])
             )
             .alias(history_key_col)
         )

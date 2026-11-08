@@ -311,9 +311,15 @@ class UmabozuApp:
             return
 
         race_date_text = race_info.get("race_date")
+        if not isinstance(race_date_text, str):
+            logger.error(
+                "Cannot forecast race %s: its scheduled race date was not found.",
+                race_id,
+            )
+            return
         try:
             race_date = date.fromisoformat(race_date_text)
-        except (TypeError, ValueError):
+        except ValueError:
             logger.error(
                 "Cannot forecast race %s: its scheduled race date was not found.",
                 race_id,
@@ -403,9 +409,8 @@ class UmabozuApp:
         ).agg(pl.col("debut_date").drop_nulls().first())
 
         # Merge details into upcoming_df
-        upcoming_df = (
-            upcoming_df.join(horse_details, on="horse_id", how="left")
-            .join(jockey_details, on="jockey_id", how="left")
+        upcoming_df = upcoming_df.join(horse_details, on="horse_id", how="left").join(
+            jockey_details, on="jockey_id", how="left"
         )
 
         # Add missing columns using the historical schema. Derived features are

@@ -157,7 +157,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
         )
 
     model.fit(x_data, y_data)
-    setattr(model, "_umabozu_feature_schema_version", FEATURE_SCHEMA_VERSION)
+    model._umabozu_feature_schema_version = FEATURE_SCHEMA_VERSION
     return model
 
 
