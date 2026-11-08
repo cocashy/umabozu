@@ -172,7 +172,7 @@ def get_valid_feature_cols(df: pl.DataFrame) -> list[str]:
     Returns:
         List of feature column names that exist in df
     """
-    return [col for col in get_feature_cols() if col in df.columns]
+    return [col for col in get_feature_cols(df) if col in df.columns]
 
 
 if __name__ == "__main__":

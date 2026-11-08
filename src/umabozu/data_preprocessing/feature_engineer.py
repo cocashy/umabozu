@@ -1,6 +1,80 @@
 import polars as pl
 
-FEATURE_SCHEMA_VERSION = 3
+FEATURE_SCHEMA_VERSION = 4
+
+
+def _add_prior_result_features(
+    df: pl.DataFrame,
+    entity_id_col: str,
+    feature_prefix: str,
+    row_index_col: str,
+) -> pl.DataFrame:
+    """Add date-safe historical results for jockeys, trainers, or similar IDs."""
+    starts_col = f"{feature_prefix}_prior_starts"
+    win_rate_col = f"{feature_prefix}_prior_win_rate"
+    top3_rate_col = f"{feature_prefix}_prior_top3_rate"
+    feature_cols = [starts_col, win_rate_col, top3_rate_col]
+    existing_cols = [col for col in feature_cols if col in df.columns]
+    if existing_cols:
+        df = df.drop(existing_cols)
+
+    if entity_id_col not in df.columns or "race_date" not in df.columns:
+        return df.with_columns(
+            pl.lit(0.0).alias(starts_col),
+            pl.lit(1.0 / 12.0).alias(win_rate_col),
+            pl.lit(1.0 / 3.0).alias(top3_rate_col),
+        )
+
+    entity_id = pl.col(entity_id_col).cast(pl.String, strict=False).str.strip_chars()
+    valid_entity_id = entity_id.is_not_null() & ~entity_id.str.to_uppercase().is_in(
+        ["", "0", "UNKNOWN", "NONE", "NULL"]
+    )
+    key_col = f"__{feature_prefix}_history_key"
+    day_starts_col = f"__{feature_prefix}_day_starts"
+    day_wins_col = f"__{feature_prefix}_day_wins"
+    day_top3_col = f"__{feature_prefix}_day_top3"
+    prior_wins_col = f"__{feature_prefix}_prior_wins"
+    prior_top3_col = f"__{feature_prefix}_prior_top3"
+
+    df = df.with_columns(
+        pl.when(valid_entity_id)
+        .then(pl.concat_str([pl.lit(f"{feature_prefix}:"), entity_id]))
+        .otherwise(
+            pl.concat_str([pl.lit("row:"), pl.col(row_index_col).cast(pl.String)])
+        )
+        .alias(key_col)
+    )
+
+    entity_daily = (
+        df.group_by([key_col, "race_date"])
+        .agg(
+            pl.len().alias(day_starts_col),
+            pl.col("__history_win").sum().alias(day_wins_col),
+            pl.col("__history_top3").sum().alias(day_top3_col),
+        )
+        .sort([key_col, "race_date"], maintain_order=True)
+        .with_columns(
+            (
+                pl.col(day_starts_col).cum_sum().over(key_col) - pl.col(day_starts_col)
+            ).alias(starts_col),
+            (pl.col(day_wins_col).cum_sum().over(key_col) - pl.col(day_wins_col)).alias(
+                prior_wins_col
+            ),
+            (pl.col(day_top3_col).cum_sum().over(key_col) - pl.col(day_top3_col)).alias(
+                prior_top3_col
+            ),
+        )
+        .with_columns(
+            ((pl.col(prior_wins_col) + 1.0) / (pl.col(starts_col) + 12.0)).alias(
+                win_rate_col
+            ),
+            ((pl.col(prior_top3_col) + 4.0) / (pl.col(starts_col) + 12.0)).alias(
+                top3_rate_col
+            ),
+        )
+        .select([key_col, "race_date", *feature_cols])
+    )
+    return df.join(entity_daily, on=[key_col, "race_date"], how="left").drop(key_col)
 
 
 def generate_features(df: pl.DataFrame) -> pl.DataFrame:
@@ -186,96 +260,10 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
         else:
             df = df.with_columns(pl.lit(0.0).alias("horse_distance_change"))
 
-        # Aggregate jockey results by date, then shift the cumulative totals.
-        # This prevents an earlier race on the same date from influencing a
-        # later race's prediction when the whole card is predicted in advance.
-        jockey_feature_cols = [
-            "jockey_prior_starts",
-            "jockey_prior_win_rate",
-            "jockey_prior_top3_rate",
-        ]
-        existing_jockey_features = [
-            col for col in jockey_feature_cols if col in df.columns
-        ]
-        if existing_jockey_features:
-            df = df.drop(existing_jockey_features)
-
-        if "jockey_id" in df.columns and "race_date" in df.columns:
-            jockey_id = (
-                pl.col("jockey_id").cast(pl.String, strict=False).str.strip_chars()
-            )
-            valid_jockey_id = (
-                jockey_id.is_not_null()
-                & ~jockey_id.str.to_uppercase().is_in(
-                    ["", "0", "UNKNOWN", "NONE", "NULL"]
-                )
-            )
-            jockey_key_col = "__jockey_history_key"
-            df = df.with_columns(
-                pl.when(valid_jockey_id)
-                .then(pl.concat_str([pl.lit("jockey:"), jockey_id]))
-                .otherwise(
-                    pl.concat_str(
-                        [pl.lit("row:"), pl.col(row_index_col).cast(pl.String)]
-                    )
-                )
-                .alias(jockey_key_col)
-            )
-
-            jockey_daily = (
-                df.group_by([jockey_key_col, "race_date"])
-                .agg(
-                    pl.len().alias("__jockey_day_starts"),
-                    pl.col("__history_win").sum().alias("__jockey_day_wins"),
-                    pl.col("__history_top3").sum().alias("__jockey_day_top3"),
-                )
-                .sort([jockey_key_col, "race_date"], maintain_order=True)
-                .with_columns(
-                    (
-                        pl.col("__jockey_day_starts").cum_sum().over(jockey_key_col)
-                        - pl.col("__jockey_day_starts")
-                    ).alias("jockey_prior_starts"),
-                    (
-                        pl.col("__jockey_day_wins").cum_sum().over(jockey_key_col)
-                        - pl.col("__jockey_day_wins")
-                    ).alias("__jockey_prior_wins"),
-                    (
-                        pl.col("__jockey_day_top3").cum_sum().over(jockey_key_col)
-                        - pl.col("__jockey_day_top3")
-                    ).alias("__jockey_prior_top3"),
-                )
-                .with_columns(
-                    (
-                        (pl.col("__jockey_prior_wins") + 1.0)
-                        / (pl.col("jockey_prior_starts") + 12.0)
-                    ).alias("jockey_prior_win_rate"),
-                    (
-                        (pl.col("__jockey_prior_top3") + 4.0)
-                        / (pl.col("jockey_prior_starts") + 12.0)
-                    ).alias("jockey_prior_top3_rate"),
-                )
-                .select(
-                    [
-                        jockey_key_col,
-                        "race_date",
-                        "jockey_prior_starts",
-                        "jockey_prior_win_rate",
-                        "jockey_prior_top3_rate",
-                    ]
-                )
-            )
-            df = df.join(
-                jockey_daily,
-                on=[jockey_key_col, "race_date"],
-                how="left",
-            )
-            df = df.drop(jockey_key_col)
-        else:
-            df = df.with_columns(
-                pl.lit(0.0).alias("jockey_prior_starts"),
-                pl.lit(1.0 / 12.0).alias("jockey_prior_win_rate"),
-                pl.lit(1.0 / 3.0).alias("jockey_prior_top3_rate"),
-            )
+        # Exclude same-day results so a card predicted in advance cannot use
+        # outcomes from an earlier race on that card.
+        df = _add_prior_result_features(df, "jockey_id", "jockey", row_index_col)
+        df = _add_prior_result_features(df, "trainer_id", "trainer", row_index_col)
 
         df = df.drop(
             [
@@ -292,9 +280,9 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
     return df.drop([row_index_col, history_key_col]).fill_null(0)
 
 
-def get_feature_cols() -> list[str]:
-    """Returns a list of feature columns used for the model."""
-    return [
+def get_feature_cols(df: pl.DataFrame | None = None) -> list[str]:
+    """Return model features, including available one-hot race context."""
+    feature_cols = [
         "horse_weight",
         "horse_weight_diff",
         "weight_carried",
@@ -322,4 +310,25 @@ def get_feature_cols() -> list[str]:
         "jockey_prior_starts",
         "jockey_prior_win_rate",
         "jockey_prior_top3_rate",
+        "trainer_prior_starts",
+        "trainer_prior_win_rate",
+        "trainer_prior_top3_rate",
     ]
+    if df is not None:
+        feature_cols = [col for col in feature_cols if col in df.columns]
+        context_prefixes = (
+            "course_name_",
+            "course_type_",
+            "course_direction_",
+            "track_condition_",
+            "weather_",
+            "sex_",
+        )
+        feature_cols.extend(
+            sorted(
+                col
+                for col in df.columns
+                if col.startswith(context_prefixes) and col != "sex_age"
+            )
+        )
+    return feature_cols

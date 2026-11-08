@@ -38,7 +38,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
         get_feature_cols,
     )
 
-    feature_cols = [col for col in get_feature_cols() if col in df.columns]
+    feature_cols = get_feature_cols(df)
     x_data = df.select(feature_cols).to_numpy()
     x_data = pd.DataFrame(x_data, columns=feature_cols)
     y_data = df.select("target").to_numpy().flatten()
@@ -79,6 +79,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
                 "max_depth": trial.suggest_int("max_depth", 5, 50),
                 "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
                 "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "subsample_freq": 1,
                 "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
                 "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
                 "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
@@ -126,6 +127,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
             n_jobs=-1,
             verbose=-1,
             boosting_type="gbdt",
+            subsample_freq=1,
             **best_params,
         )
     else:
@@ -139,6 +141,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
             max_depth=-1,
             min_child_samples=20,
             subsample=0.8,
+            subsample_freq=1,
             colsample_bytree=0.8,
             reg_alpha=0.1,
             reg_lambda=0.1,

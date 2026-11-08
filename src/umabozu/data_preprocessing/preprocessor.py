@@ -36,6 +36,15 @@ def clean_data(df: pl.DataFrame) -> pl.DataFrame:
     if date_conversions:
         df = df.with_columns(*date_conversions)
 
+    # Scraped records can append a meeting number to the venue name (e.g. 東京1).
+    if "course_name" in df.columns:
+        df = df.with_columns(
+            pl.col("course_name")
+            .cast(pl.String, strict=False)
+            .str.replace(r"\d+$", "")
+            .alias("course_name")
+        )
+
     # Convert numeric columns, coercing errors to null
     numeric_cols = [
         "distance",
@@ -61,6 +70,7 @@ def clean_data(df: pl.DataFrame) -> pl.DataFrame:
     # For simplicity, we'll just convert some common ones to category type.
     # LightGBM can handle categorical features if specified.
     categorical_cols = [
+        "course_name",
         "course_type",
         "course_direction",
         "track_condition",

@@ -372,6 +372,7 @@ class UmabozuApp:
             r["race_id"] = race_id  # Ensure race_id is in each runner dict
             r["race_number"] = race_info.get("race_number", 0) or 0
             r["num_of_runners"] = len(runners)
+            r["course_name"] = race_info.get("course_name", "UNKNOWN")
             r["course_type"] = race_info.get("course_type", "芝")
             r["distance"] = race_info.get("distance", 1600)
             r["course_direction"] = race_info.get("course_direction", "右")
@@ -401,13 +402,20 @@ class UmabozuApp:
         # Enrich upcoming_df with profile data and the last known race weights.
         logger.info("Enriching upcoming race data with horse/jockey profiles...")
 
-        horse_details = history_before_race.group_by(
-            "horse_id", maintain_order=True
-        ).agg(
+        sex_feature_cols = [
+            col
+            for col in history_before_race.columns
+            if col.startswith("sex_") and col != "sex_age"
+        ]
+        horse_detail_aggs = [
             pl.col("horse_birth_date").drop_nulls().first(),
             pl.col("horse_weight_observed").drop_nulls().last(),
             pl.col("horse_weight_diff_observed").drop_nulls().last(),
-        )
+            *[pl.col(col).drop_nulls().last().alias(col) for col in sex_feature_cols],
+        ]
+        horse_details = history_before_race.group_by(
+            "horse_id", maintain_order=True
+        ).agg(*horse_detail_aggs)
         jockey_details = history_before_race.group_by(
             "jockey_id", maintain_order=True
         ).agg(pl.col("debut_date").drop_nulls().first())
@@ -420,7 +428,32 @@ class UmabozuApp:
         # Add missing columns using the historical schema. Derived features are
         # recalculated below after combining the history and upcoming runners.
         missing_cols = set(history_before_race.columns) - set(upcoming_df.columns)
+        one_hot_sources = {
+            "course_name": "course_name_",
+            "course_type": "course_type_",
+            "course_direction": "course_direction_",
+            "track_condition": "track_condition_",
+            "weather": "weather_",
+        }
         for col in missing_cols:
+            matched_source = next(
+                (
+                    (source, prefix)
+                    for source, prefix in one_hot_sources.items()
+                    if col.startswith(prefix) and source in upcoming_df.columns
+                ),
+                None,
+            )
+            if matched_source:
+                source, prefix = matched_source
+                category_value = col[len(prefix) :]
+                upcoming_df = upcoming_df.with_columns(
+                    (pl.col(source).cast(pl.String) == category_value)
+                    .cast(pl.Int64)
+                    .alias(col)
+                )
+                continue
+
             col_dtype = history_before_race.schema.get(col)
             if col_dtype == pl.String:
                 upcoming_df = upcoming_df.with_columns(

@@ -47,6 +47,10 @@ def parse_shutsubahyou_html(
     if race_name_tag:
         race_data["race_name"] = race_name_tag.get_text(strip=True)
 
+    course_match = re.search(r"\d+回\s*(\w+?)\s*\d+日目", page_text)
+    if course_match:
+        race_data["course_name"] = course_match.group(1).rstrip("0123456789")
+
     # Line break for E501
     race_num_tag = soup.find("dt", class_="RaceNum") or soup.find(
         "div", class_="RaceNum"
@@ -128,6 +132,18 @@ def parse_shutsubahyou_html(
                         )
                         if j_id_match:
                             runner["jockey_id"] = j_id_match.group(1)
+
+            trainer_td = row.find("td", class_=re.compile(r"Trainer", re.I))
+            if trainer_td:
+                a_tag = trainer_td.find("a", href=True)
+                if a_tag:
+                    href = a_tag.get("href", "")
+                    if isinstance(href, str):
+                        trainer_id_match = re.search(
+                            r"/trainer/(?:result/recent/)?(\d+)", href
+                        )
+                        if trainer_id_match:
+                            runner["trainer_id"] = trainer_id_match.group(1)
 
             # Weight Carried
             weight_td = row.find("td", string=re.compile(r"^\d+\.\d+$"))
