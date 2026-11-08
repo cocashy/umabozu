@@ -1,6 +1,6 @@
 import polars as pl
 
-FEATURE_SCHEMA_VERSION = 2
+FEATURE_SCHEMA_VERSION = 3
 
 
 def generate_features(df: pl.DataFrame) -> pl.DataFrame:
@@ -124,6 +124,169 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
                 expression = pl.lit(0.0)
             df = df.with_columns(expression.alias(feature_col))
 
+    if "rank" in df.columns:
+        df = df.with_columns(
+            (pl.col("rank") == 1).cast(pl.Int64).alias("__history_win"),
+            (pl.col("rank") <= 3).cast(pl.Int64).alias("__history_top3"),
+        )
+        df = df.with_columns(
+            (pl.col("rank").cum_count().over(history_key_col) - 1)
+            .cast(pl.Float64)
+            .alias("horse_prior_starts"),
+            (
+                pl.col("__history_win").cum_sum().over(history_key_col)
+                - pl.col("__history_win")
+            ).alias("__horse_prior_wins"),
+            (
+                pl.col("__history_top3").cum_sum().over(history_key_col)
+                - pl.col("__history_top3")
+            ).alias("__horse_prior_top3"),
+            (pl.col("rank").cum_sum().over(history_key_col) - pl.col("rank")).alias(
+                "__horse_prior_rank_sum"
+            ),
+            pl.col("rank")
+            .shift(1)
+            .over(history_key_col)
+            .cast(pl.Float64)
+            .alias("horse_last_rank"),
+        )
+        df = df.with_columns(
+            (
+                (pl.col("__horse_prior_wins") + 1.0)
+                / (pl.col("horse_prior_starts") + 12.0)
+            ).alias("horse_prior_win_rate"),
+            (
+                (pl.col("__horse_prior_top3") + 4.0)
+                / (pl.col("horse_prior_starts") + 12.0)
+            ).alias("horse_prior_top3_rate"),
+            pl.when(pl.col("horse_prior_starts") > 0)
+            .then(pl.col("__horse_prior_rank_sum") / pl.col("horse_prior_starts"))
+            .otherwise(8.0)
+            .alias("horse_prior_avg_rank"),
+        )
+
+        if "race_date" in df.columns:
+            df = df.with_columns(
+                pl.col("race_date")
+                .diff()
+                .over(history_key_col)
+                .dt.total_days()
+                .cast(pl.Float64)
+                .alias("horse_days_since_last")
+            )
+        else:
+            df = df.with_columns(pl.lit(0.0).alias("horse_days_since_last"))
+
+        if "distance" in df.columns:
+            df = df.with_columns(
+                (pl.col("distance") - pl.col("distance").shift(1).over(history_key_col))
+                .cast(pl.Float64)
+                .alias("horse_distance_change")
+            )
+        else:
+            df = df.with_columns(pl.lit(0.0).alias("horse_distance_change"))
+
+        # Aggregate jockey results by date, then shift the cumulative totals.
+        # This prevents an earlier race on the same date from influencing a
+        # later race's prediction when the whole card is predicted in advance.
+        jockey_feature_cols = [
+            "jockey_prior_starts",
+            "jockey_prior_win_rate",
+            "jockey_prior_top3_rate",
+        ]
+        existing_jockey_features = [
+            col for col in jockey_feature_cols if col in df.columns
+        ]
+        if existing_jockey_features:
+            df = df.drop(existing_jockey_features)
+
+        if "jockey_id" in df.columns and "race_date" in df.columns:
+            jockey_id = (
+                pl.col("jockey_id").cast(pl.String, strict=False).str.strip_chars()
+            )
+            valid_jockey_id = (
+                jockey_id.is_not_null()
+                & ~jockey_id.str.to_uppercase().is_in(
+                    ["", "0", "UNKNOWN", "NONE", "NULL"]
+                )
+            )
+            jockey_key_col = "__jockey_history_key"
+            df = df.with_columns(
+                pl.when(valid_jockey_id)
+                .then(pl.concat_str([pl.lit("jockey:"), jockey_id]))
+                .otherwise(
+                    pl.concat_str(
+                        [pl.lit("row:"), pl.col(row_index_col).cast(pl.String)]
+                    )
+                )
+                .alias(jockey_key_col)
+            )
+
+            jockey_daily = (
+                df.group_by([jockey_key_col, "race_date"])
+                .agg(
+                    pl.len().alias("__jockey_day_starts"),
+                    pl.col("__history_win").sum().alias("__jockey_day_wins"),
+                    pl.col("__history_top3").sum().alias("__jockey_day_top3"),
+                )
+                .sort([jockey_key_col, "race_date"], maintain_order=True)
+                .with_columns(
+                    (
+                        pl.col("__jockey_day_starts").cum_sum().over(jockey_key_col)
+                        - pl.col("__jockey_day_starts")
+                    ).alias("jockey_prior_starts"),
+                    (
+                        pl.col("__jockey_day_wins").cum_sum().over(jockey_key_col)
+                        - pl.col("__jockey_day_wins")
+                    ).alias("__jockey_prior_wins"),
+                    (
+                        pl.col("__jockey_day_top3").cum_sum().over(jockey_key_col)
+                        - pl.col("__jockey_day_top3")
+                    ).alias("__jockey_prior_top3"),
+                )
+                .with_columns(
+                    (
+                        (pl.col("__jockey_prior_wins") + 1.0)
+                        / (pl.col("jockey_prior_starts") + 12.0)
+                    ).alias("jockey_prior_win_rate"),
+                    (
+                        (pl.col("__jockey_prior_top3") + 4.0)
+                        / (pl.col("jockey_prior_starts") + 12.0)
+                    ).alias("jockey_prior_top3_rate"),
+                )
+                .select(
+                    [
+                        jockey_key_col,
+                        "race_date",
+                        "jockey_prior_starts",
+                        "jockey_prior_win_rate",
+                        "jockey_prior_top3_rate",
+                    ]
+                )
+            )
+            df = df.join(
+                jockey_daily,
+                on=[jockey_key_col, "race_date"],
+                how="left",
+            )
+            df = df.drop(jockey_key_col)
+        else:
+            df = df.with_columns(
+                pl.lit(0.0).alias("jockey_prior_starts"),
+                pl.lit(1.0 / 12.0).alias("jockey_prior_win_rate"),
+                pl.lit(1.0 / 3.0).alias("jockey_prior_top3_rate"),
+            )
+
+        df = df.drop(
+            [
+                "__history_win",
+                "__history_top3",
+                "__horse_prior_wins",
+                "__horse_prior_top3",
+                "__horse_prior_rank_sum",
+            ]
+        )
+
     # Fill any NaN values that result from rolling calculations
     # (e.g., for first few races)
     return df.drop([row_index_col, history_key_col]).fill_null(0)
@@ -136,6 +299,9 @@ def get_feature_cols() -> list[str]:
         "horse_weight_diff",
         "weight_carried",
         "distance",  # From race data
+        "horse_number",
+        "num_of_runners",
+        "race_number",
         "age_at_race_days",
         "jockey_experience_years",
         # Rolling features
@@ -145,4 +311,15 @@ def get_feature_cols() -> list[str]:
         "horse_rolling_last3f_mean_3",
         "horse_rolling_last3f_mean_5",
         "horse_rolling_last3f_mean_10",
+        # Pre-race horse and jockey history
+        "horse_prior_starts",
+        "horse_prior_win_rate",
+        "horse_prior_top3_rate",
+        "horse_prior_avg_rank",
+        "horse_last_rank",
+        "horse_days_since_last",
+        "horse_distance_change",
+        "jockey_prior_starts",
+        "jockey_prior_win_rate",
+        "jockey_prior_top3_rate",
     ]

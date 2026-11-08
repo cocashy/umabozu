@@ -15,7 +15,7 @@ def predict_probabilities(
     model: Any, df: pl.DataFrame, feature_cols: list[str]
 ) -> pl.DataFrame:
     """
-    Predicts probabilities for each class (rank) using the trained model.
+    Predicts win probabilities using the feature schema stored on the model.
     """
     if df.is_empty():
         return pl.DataFrame(
@@ -26,6 +26,12 @@ def predict_probabilities(
                 "proba_3": [],
             }
         )
+
+    # A fitted model owns its feature order. The argument remains as a fallback
+    # for older estimator-like callers that do not store this metadata.
+    model_feature_cols = getattr(model, "_umabozu_feature_cols", None)
+    if model_feature_cols:
+        feature_cols = list(model_feature_cols)
 
     # Ensure all feature columns are present in the DataFrame
     # and handle potential missing columns by filling with 0
@@ -46,10 +52,10 @@ def predict_probabilities(
 def attach_win_probability(
     df: pl.DataFrame, probabilities_df: pl.DataFrame
 ) -> pl.DataFrame:
-    """Attach model probabilities and expose the first-place probability.
+    """Attach model probabilities and expose the win probability.
 
-    The trainer maps first place to target class 0, so ``proba_0`` is the
-    predicted win probability. This helper does not read odds.
+    The trainer maps a win to class 0, so ``proba_0`` is the predicted win
+    probability. This helper does not read odds.
     """
     if df.height != probabilities_df.height:
         raise ValueError(
