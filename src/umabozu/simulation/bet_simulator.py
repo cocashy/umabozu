@@ -4,9 +4,6 @@ from typing import Any
 
 import polars as pl
 
-from umabozu.data_preprocessing.data_loader import load_data_from_db  # TID252
-from umabozu.data_preprocessing.feature_engineer import generate_features
-from umabozu.data_preprocessing.preprocessor import clean_data
 from umabozu.models.predictor import (
     attach_win_probability,
     load_model,
@@ -114,29 +111,14 @@ def calculate_payout(simulated_bets: pl.DataFrame) -> tuple[float, float, float]
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    from umabozu.data_pipeline import prepare_training_data, split_train_test
+    from umabozu.data_preprocessing.feature_engineer import get_feature_cols
+    from umabozu.models.trainer import train_model
 
     # --- Test Betting Simulation Pipeline ---
-    # 1. Load Data
-    logger.info("Loading data for betting simulation test...")
-    full_df = load_data_from_db()
-
-    # Create a dummy 'rank' column if it doesn't exist for testing purposes
-    if "rank" not in full_df.columns:
-        full_df = full_df.with_columns(pl.lit(0).alias("rank"))
-
-    # For testing, we'll split off a small prediction set from the end
-    split_idx = int(len(full_df) * 0.9)
-    train_df = full_df.head(split_idx)
-    test_df = full_df.tail(len(full_df) - split_idx)
-
-    # 2. Clean and Feature Engineer
-    logger.info("Cleaning and feature engineering training data...")
-    train_df_processed = clean_data(train_df)
-    train_df_processed = generate_features(train_df_processed)
-
-    logger.info("Cleaning and feature engineering test data...")
-    test_df_processed = clean_data(test_df)
-    test_df_processed = generate_features(test_df_processed)
+    logger.info("Loading and preparing data for betting simulation...")
+    full_df = prepare_training_data()
+    train_df_processed, test_df_processed = split_train_test(full_df, 0.1)
 
     # 3. Train a dummy model (or load a pre-trained one)
     logger.info("Training a model for betting simulation test...")
@@ -145,9 +127,6 @@ if __name__ == "__main__":
             "Error: 'rank' column not found in featured_df. Cannot train model."
         )
         sys.exit(1)
-
-    from umabozu.data_preprocessing.feature_engineer import get_feature_cols
-    from umabozu.models.trainer import train_model
 
     feature_cols = [
         col for col in get_feature_cols() if col in train_df_processed.columns
