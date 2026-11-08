@@ -47,6 +47,26 @@ def predict_probabilities(
     )
 
 
+def attach_win_probability(
+    df: pl.DataFrame, probabilities_df: pl.DataFrame
+) -> pl.DataFrame:
+    """Attach model probabilities and expose the first-place probability.
+
+    The trainer maps first place to target class 0, so ``proba_0`` is the
+    predicted win probability. This helper does not read odds.
+    """
+    if df.height != probabilities_df.height:
+        raise ValueError(
+            "The prediction row count must match the source DataFrame row count."
+        )
+    if "proba_0" not in probabilities_df.columns:
+        raise ValueError("Prediction output is missing the first-place class proba_0.")
+
+    return df.with_columns(probabilities_df).with_columns(
+        pl.col("proba_0").alias("win_probability")
+    )
+
+
 def load_model(model_path: str) -> BaseEstimator:
     """Loads a trained model from the specified path."""
     return joblib.load(model_path)

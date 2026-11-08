@@ -109,8 +109,7 @@ def split_train_test(
     df: pl.DataFrame, test_ratio: float = 0.2
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """
-    Split DataFrame into train and test sets based on race_date.
-    Ensures temporal order is preserved (older data for training, newer for testing).
+    Split chronologically, keeping whole races together when race IDs exist.
 
     Args:
         df: Input DataFrame sorted or unsorted by race_date
@@ -122,15 +121,45 @@ def split_train_test(
     if df.is_empty():
         return df, df
 
-    # Sort by race_date to ensure temporal order
-    df = df.sort("race_date")
+    if not 0.0 < test_ratio < 1.0:
+        raise ValueError("test_ratio must be between 0.0 and 1.0.")
+    if "race_date" not in df.columns:
+        raise ValueError("Chronological split requires a race_date column.")
 
-    split_idx = int(len(df) * (1 - test_ratio))
-    train_df = df.head(split_idx)
-    test_df = df.tail(len(df) - split_idx)
+    if "race_id" not in df.columns:
+        logger.warning(
+            "race_id is missing; splitting rows by race_date instead of whole races."
+        )
+        df = df.sort("race_date")
+        split_idx = int(len(df) * (1 - test_ratio))
+        if split_idx <= 0 or split_idx >= len(df):
+            raise ValueError("Not enough rows to create non-empty train and test sets.")
+        train_df = df.head(split_idx)
+        test_df = df.tail(len(df) - split_idx)
+        logger.info(
+            f"Data split: {len(train_df)} training samples, {len(test_df)} test samples"
+        )
+        return train_df, test_df
+
+    df = df.sort(["race_date", "race_id"])
+    races = df.select(["race_id", "race_date"]).unique().sort(["race_date", "race_id"])
+    split_idx = int(len(races) * (1 - test_ratio))
+    if split_idx <= 0 or split_idx >= len(races):
+        raise ValueError("Not enough races to create non-empty train and test sets.")
+
+    train_races = races.head(split_idx).select("race_id")
+    test_races = races.tail(len(races) - split_idx).select("race_id")
+    train_df = df.join(train_races, on="race_id", how="semi").sort(
+        ["race_date", "race_id"]
+    )
+    test_df = df.join(test_races, on="race_id", how="semi").sort(
+        ["race_date", "race_id"]
+    )
 
     logger.info(
-        f"Data split: {len(train_df)} training samples, {len(test_df)} test samples"
+        f"Data split: {train_df.select('race_id').n_unique()} training races, "
+        f"{test_df.select('race_id').n_unique()} test races "
+        f"({len(train_df)} and {len(test_df)} samples)"
     )
 
     return train_df, test_df
