@@ -7,10 +7,6 @@ import pandas as pd
 import polars as pl
 from sklearn.base import BaseEstimator
 
-from umabozu.data_preprocessing.data_loader import load_data_from_db
-from umabozu.data_preprocessing.feature_engineer import generate_features
-from umabozu.data_preprocessing.preprocessor import clean_data
-
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -79,33 +75,14 @@ def save_model(model: BaseEstimator, model_path: str):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    from umabozu.data_pipeline import prepare_training_data, split_train_test
+    from umabozu.data_preprocessing.feature_engineer import get_feature_cols
+    from umabozu.models.trainer import train_model
 
     # --- Test Prediction Pipeline ---
-    # 1. Load Data
-    logger.info("Loading data for prediction test...")
-    full_df = load_data_from_db()
-
-    if "race_date" in full_df.columns:
-        full_df = full_df.sort("race_date")
-
-    # Create a dummy 'rank' column if it doesn't exist for testing purposes
-    if "rank" not in full_df.columns:
-        full_df = full_df.with_columns(pl.lit(0).alias("rank"))
-
-    # For testing, we'll split off a small prediction set from the end
-    # In a real scenario, this would be new, unseen data.
-    split_idx = int(len(full_df) * 0.9)
-    train_df = full_df.head(split_idx)
-    predict_df = full_df.tail(len(full_df) - split_idx)
-
-    # 2. Clean and Feature Engineer
-    logger.info("Cleaning and feature engineering training data...")
-    train_df_processed = clean_data(train_df)
-    train_df_processed = generate_features(train_df_processed)
-
-    logger.info("Cleaning and feature engineering prediction data...")
-    predict_df_processed = clean_data(predict_df)
-    predict_df_processed = generate_features(predict_df_processed)
+    logger.info("Loading and preparing data for prediction example...")
+    full_df = prepare_training_data()
+    train_df_processed, predict_df_processed = split_train_test(full_df, 0.1)
 
     # 3. Train a dummy model (should be replaced by actual trained model)
     logger.info("Training a dummy model for prediction test...")
@@ -115,25 +92,14 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    # Get feature columns from the processed training data
-    from umabozu.data_preprocessing.feature_engineer import get_feature_cols
-
     feature_cols = [
         col for col in get_feature_cols() if col in train_df_processed.columns
     ]
-    x_train = train_df_processed.select(feature_cols).to_numpy()
-    x_train = pd.DataFrame(x_train, columns=feature_cols)
-    y_train = train_df_processed.select("rank").to_numpy().flatten()
-
-    # Use a simple LightGBM model for demonstration
-    import lightgbm as lgb
-
-    dummy_model = lgb.LGBMClassifier(random_state=42)  # type: ignore
-    dummy_model.fit(x_train, y_train)
+    model = train_model(train_df_processed, optimize=False)
 
     # 4. Predict
     logger.info("Predicting probabilities...")
-    probas_df = predict_probabilities(dummy_model, predict_df_processed, feature_cols)
+    probas_df = predict_probabilities(model, predict_df_processed, feature_cols)
 
     logger.info("\n--- Prediction Results Head ---")
     logger.info(probas_df.head())

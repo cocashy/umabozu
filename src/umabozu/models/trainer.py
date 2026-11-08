@@ -8,7 +8,7 @@ import optuna
 import pandas as pd
 import polars as pl
 from sklearn.metrics import log_loss
-from sklearn.model_selection import StratifiedKFold, TimeSeriesSplit
+from sklearn.model_selection import TimeSeriesSplit
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -20,7 +20,11 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
     optionally with Optuna optimization.
     """
     if "race_date" in df.columns:
-        df = df.sort("race_date")
+        sort_cols = ["race_date"]
+        sort_cols.extend(
+            col for col in ["race_id", "horse_number"] if col in df.columns
+        )
+        df = df.sort(sort_cols, maintain_order=True)
 
     # 1. Create Target (0: 1st, 1: 2nd, 3: 4th+)
     df = df.with_columns(
@@ -34,7 +38,10 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
     )  # Map 4th+ to 3
 
     # Define features and target
-    from umabozu.data_preprocessing.feature_engineer import get_feature_cols
+    from umabozu.data_preprocessing.feature_engineer import (
+        FEATURE_SCHEMA_VERSION,
+        get_feature_cols,
+    )
 
     feature_cols = [col for col in get_feature_cols() if col in df.columns]
     x_data = df.select(feature_cols).to_numpy()
@@ -43,6 +50,27 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
 
     if optimize:
         logger.info("Starting Optuna optimization for LightGBM...")
+
+        if "race_date" not in df.columns:
+            raise ValueError("Time-series optimization requires a race_date column.")
+        if df.get_column("race_date").null_count():
+            raise ValueError("Time-series optimization requires non-null race dates.")
+
+        ordered_dates = (
+            df.select("race_date").unique().sort("race_date").to_series().to_list()
+        )
+        row_dates = df.get_column("race_date").to_list()
+        date_splits = []
+        # Split the ordered date list so all runners and races on a date remain
+        # in the same fold.
+        for train_date_idx, val_date_idx in TimeSeriesSplit(n_splits=5).split(
+            ordered_dates
+        ):
+            train_dates = {ordered_dates[i] for i in train_date_idx}
+            val_dates = {ordered_dates[i] for i in val_date_idx}
+            train_idx = [i for i, value in enumerate(row_dates) if value in train_dates]
+            val_idx = [i for i, value in enumerate(row_dates) if value in val_dates]
+            date_splits.append((train_idx, val_idx))
 
         def objective(trial):
             param = {
@@ -66,10 +94,9 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
                 "boosting_type": "gbdt",
             }
 
-            tss = TimeSeriesSplit(n_splits=5)
             logloss_scores = []
 
-            for train_idx, val_idx in tss.split(x_data, y_data):
+            for train_idx, val_idx in date_splits:
                 x_train, x_val = x_data.iloc[train_idx], x_data.iloc[val_idx]
                 y_train, y_val = y_data[train_idx], y_data[val_idx]
 
@@ -130,6 +157,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
         )
 
     model.fit(x_data, y_data)
+    setattr(model, "_umabozu_feature_schema_version", FEATURE_SCHEMA_VERSION)
     return model
 
 

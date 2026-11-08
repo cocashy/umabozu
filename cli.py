@@ -61,8 +61,10 @@ def main():
     train_parser.add_argument(
         "--test-ratio",
         type=float,
-        help="Ratio of data to use for testing (e.g., 0.2 for 20%%). "
-        "If specified, data will be split and test performance logged.",
+        help=(
+            "Ratio of distinct race dates to use for testing "
+            "(e.g., 0.2 for 20%%). If specified, test performance is logged."
+        ),
     )
 
     # Forecast command
@@ -92,7 +94,10 @@ def main():
         "--test-ratio",
         type=float,
         default=0.2,
-        help="Ratio of data to use for testing (default: 0.2 = 20%%).",
+        help=(
+            "Ratio of distinct race dates to use for testing "
+            "(default: 0.2 = 20%%)."
+        ),
     )
     simulate_parser.add_argument(
         "--model-path",

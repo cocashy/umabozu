@@ -24,6 +24,24 @@ def parse_shutsubahyou_html(
     # 1. Parse Race Info
     race_data: dict[str, Any] = {"race_id": race_id}
 
+    # The scheduled date is present in the title/description on race-card pages.
+    # It is required to build age and as-of historical features correctly.
+    page_text = soup.get_text(" ", strip=True)
+    metadata_text = " ".join(
+        str(tag.get("content", ""))
+        for tag in soup.find_all("meta")
+        if tag.get("content")
+    )
+    date_match = re.search(
+        r"(?<!\d)(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日",
+        f"{page_text} {metadata_text}",
+    )
+    if date_match:
+        race_data["race_date"] = (
+            f"{date_match.group(1)}-{int(date_match.group(2)):02d}-"
+            f"{int(date_match.group(3)):02d}"
+        )
+
     # Extract race name and number
     race_name_tag = soup.find("div", class_="RaceName") or soup.find("h1")
     if race_name_tag:

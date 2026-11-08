@@ -26,7 +26,10 @@ from umabozu.data_pipeline import (
     split_train_test,
 )
 from umabozu.data_preprocessing.data_loader import load_data_from_db
-from umabozu.data_preprocessing.feature_engineer import generate_features
+from umabozu.data_preprocessing.feature_engineer import (
+    FEATURE_SCHEMA_VERSION,
+    generate_features,
+)
 from umabozu.data_preprocessing.preprocessor import clean_data
 from umabozu.database.crud import (
     get_db_connection,
@@ -258,7 +261,8 @@ class UmabozuApp:
         Args:
             optimize: If True, use Optuna to optimize hyperparameters
             n_trials: Number of Optuna trials (only used if optimize=True)
-            test_ratio: If provided (e.g., 0.2), split data for evaluation.
+            test_ratio: If provided (e.g., 0.2), split distinct race dates for
+                        evaluation.
                        If None, use all data for training (production mode).
         """
         logger.info("Preparing training data...")
@@ -304,6 +308,16 @@ class UmabozuApp:
         race_info, runners = parse_shutsubahyou_html(race_id, content)
         if not runners:
             logger.warning("Error: No runners found in race card.")
+            return
+
+        race_date_text = race_info.get("race_date")
+        try:
+            race_date = date.fromisoformat(race_date_text)
+        except (TypeError, ValueError):
+            logger.error(
+                "Cannot forecast race %s: its scheduled race date was not found.",
+                race_id,
+            )
             return
 
         # --- Sync Missing Profiles ---
@@ -353,33 +367,52 @@ class UmabozuApp:
             r["course_direction"] = race_info.get("course_direction", "右")
             r["track_condition"] = race_info.get("track_condition", "良")
             r["weather"] = race_info.get("weather", "晴")
-            r["race_date"] = date.today().strftime("%Y-%m-%d")
+            r["race_date"] = race_date.isoformat()
 
         upcoming_df = pl.DataFrame(runners)
 
         # Use common pipeline for historical data
         full_training_data = prepare_training_data(use_db_optimized=True)
 
-        # Enrich upcoming_df with detailed information from historical data
+        # Use only results completed before the target race date. This prevents
+        # future or same-day results from entering the forecast features.
+        history_before_race = full_training_data.filter(
+            pl.col("race_date") < pl.lit(race_date)
+        )
+        history_before_race = history_before_race.sort(
+            [
+                col
+                for col in ["race_date", "race_id", "horse_number"]
+                if col in history_before_race.columns
+            ],
+            maintain_order=True,
+        )
+
+        # Enrich upcoming_df with profile data and the last known race weights.
         logger.info("Enriching upcoming race data with horse/jockey profiles...")
 
-        # Get horse and jockey details from full_training_data
-        horse_details = full_training_data.select(
-            ["horse_id", "horse_birth_date", "horse_weight"]
-        ).unique(subset=["horse_id"])
-        jockey_details = full_training_data.select(["jockey_id", "debut_date"]).unique(
-            subset=["jockey_id"]
+        horse_details = history_before_race.group_by(
+            "horse_id", maintain_order=True
+        ).agg(
+            pl.col("horse_birth_date").drop_nulls().first(),
+            pl.col("horse_weight_observed").drop_nulls().last(),
+            pl.col("horse_weight_diff_observed").drop_nulls().last(),
         )
+        jockey_details = history_before_race.group_by(
+            "jockey_id", maintain_order=True
+        ).agg(pl.col("debut_date").drop_nulls().first())
 
         # Merge details into upcoming_df
-        upcoming_df = upcoming_df.join(horse_details, on="horse_id", how="left").join(
-            jockey_details, on="jockey_id", how="left"
+        upcoming_df = (
+            upcoming_df.join(horse_details, on="horse_id", how="left")
+            .join(jockey_details, on="jockey_id", how="left")
         )
 
-        # Add missing columns with default values, using correct dtypes
-        missing_cols = set(full_training_data.columns) - set(upcoming_df.columns)
+        # Add missing columns using the historical schema. Derived features are
+        # recalculated below after combining the history and upcoming runners.
+        missing_cols = set(history_before_race.columns) - set(upcoming_df.columns)
         for col in missing_cols:
-            col_dtype = full_training_data.schema.get(col)
+            col_dtype = history_before_race.schema.get(col)
             if col_dtype == pl.String:
                 upcoming_df = upcoming_df.with_columns(
                     pl.lit("").alias(col).cast(pl.String)
@@ -394,7 +427,7 @@ class UmabozuApp:
                 )
             elif col_dtype == pl.Date:
                 upcoming_df = upcoming_df.with_columns(
-                    pl.lit(date(2020, 1, 1), dtype=pl.Date).alias(col)
+                    pl.lit(None, dtype=pl.Date).alias(col)
                 )
             else:
                 upcoming_df = upcoming_df.with_columns(
@@ -402,22 +435,33 @@ class UmabozuApp:
                 )
 
         # Ensure column order matches full_training_data
-        upcoming_df = upcoming_df.select(full_training_data.columns)
+        upcoming_df = upcoming_df.select(history_before_race.columns)
 
         # Cast all columns to match full_training_data schema exactly
         for col in upcoming_df.columns:
-            expected_dtype = full_training_data.schema.get(col)
+            expected_dtype = history_before_race.schema.get(col)
             current_dtype = upcoming_df.schema.get(col)
             if expected_dtype and current_dtype != expected_dtype:
                 upcoming_df = upcoming_df.with_columns(
                     pl.col(col).cast(expected_dtype, strict=False)
                 )
 
-        # Combine for the target race analysis
-        all_data = pl.concat([full_training_data, upcoming_df], how="vertical")
+        # Rebuild features with the historical outcomes and the target race in
+        # one chronological frame so the target uses the same feature logic.
+        all_data = pl.concat([history_before_race, upcoming_df], how="vertical")
+        all_data = generate_features(all_data)
 
         target_df = all_data.filter(pl.col("race_id") == race_id)
         model = load_model("trained_models/lgbm_model.pkl")
+        if (
+            getattr(model, "_umabozu_feature_schema_version", None)
+            != FEATURE_SCHEMA_VERSION
+        ):
+            logger.error(
+                "The saved model uses an outdated feature schema. "
+                "Run the train command before forecasting."
+            )
+            return
         feature_cols = get_valid_feature_cols(target_df)
         probas = predict_probabilities(model, target_df, feature_cols)
         predictions = attach_win_probability(target_df, probas)
@@ -481,7 +525,7 @@ class UmabozuApp:
         evaluates on the test split. Existing models are not used.
 
         Args:
-            test_ratio: Proportion of data to use for testing (default: 0.2)
+            test_ratio: Proportion of distinct race dates to use for testing.
             model_path: Ignored. simulate always retrains to avoid leakage.
             retrain: Ignored. simulate always retrains to avoid leakage.
             optimize: If True and retrain=True, use Optuna optimization
