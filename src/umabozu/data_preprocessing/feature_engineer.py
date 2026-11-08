@@ -54,12 +54,15 @@ def _add_prior_result_features(
         )
         .sort([key_col, "race_date"], maintain_order=True)
         .with_columns(
-            (pl.col(day_starts_col).cum_sum().over(key_col) - pl.col(day_starts_col))
-            .alias(starts_col),
-            (pl.col(day_wins_col).cum_sum().over(key_col) - pl.col(day_wins_col))
-            .alias(prior_wins_col),
-            (pl.col(day_top3_col).cum_sum().over(key_col) - pl.col(day_top3_col))
-            .alias(prior_top3_col),
+            (
+                pl.col(day_starts_col).cum_sum().over(key_col) - pl.col(day_starts_col)
+            ).alias(starts_col),
+            (pl.col(day_wins_col).cum_sum().over(key_col) - pl.col(day_wins_col)).alias(
+                prior_wins_col
+            ),
+            (pl.col(day_top3_col).cum_sum().over(key_col) - pl.col(day_top3_col)).alias(
+                prior_top3_col
+            ),
         )
         .with_columns(
             ((pl.col(prior_wins_col) + 1.0) / (pl.col(starts_col) + 12.0)).alias(
