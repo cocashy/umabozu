@@ -10,6 +10,7 @@ import polars as pl
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 
 # TID252: Prefer absolute imports
+from umabozu.config import DEFAULT_MIN_WIN_PROBABILITY
 from umabozu.data_collection.batch_collector import collect_profiles, collect_races
 from umabozu.data_collection.html_parser import (
     parse_horse_profile_html,
@@ -57,7 +58,12 @@ logger = logging.getLogger(__name__)
 
 class UmabozuApp:
     def __init__(self):
-        self.min_probability = float(os.getenv("UMABOZU_MIN_WIN_PROBABILITY", "0.13"))
+        self.min_probability = float(
+            os.getenv(
+                "UMABOZU_MIN_WIN_PROBABILITY",
+                str(DEFAULT_MIN_WIN_PROBABILITY),
+            )
+        )
         if not 0.0 <= self.min_probability <= 1.0:
             raise ValueError("UMABOZU_MIN_WIN_PROBABILITY must be between 0 and 1.")
         self.max_bets_per_race = 1

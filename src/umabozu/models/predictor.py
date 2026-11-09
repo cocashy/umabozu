@@ -3,12 +3,43 @@ import sys
 from typing import Any
 
 import joblib
+import numpy as np
 import pandas as pd
 import polars as pl
 from sklearn.base import BaseEstimator
 
+from umabozu.data_preprocessing.feature_engineer import FEATURE_SCHEMA_VERSION
+
 # Set up logging
 logger = logging.getLogger(__name__)
+
+
+def normalize_win_probabilities(
+    win_probabilities: np.ndarray, race_ids: pl.Series | list[str]
+) -> np.ndarray:
+    """Rescale runner win scores to sum to one within each race."""
+    probabilities = np.asarray(win_probabilities, dtype=np.float64)
+    if probabilities.size == 0:
+        return probabilities
+
+    grouped = pl.DataFrame(
+        {
+            "race_id": race_ids,
+            "win_probability": probabilities,
+        }
+    )
+    race_total = pl.col("win_probability").sum().over("race_id")
+    runner_count = pl.col("win_probability").count().over("race_id")
+    return (
+        grouped.with_columns(
+            pl.when(race_total > 0)
+            .then(pl.col("win_probability") / race_total)
+            .otherwise(1.0 / runner_count)
+            .alias("win_probability")
+        )
+        .get_column("win_probability")
+        .to_numpy()
+    )
 
 
 def predict_probabilities(
@@ -43,10 +74,27 @@ def predict_probabilities(
     x_pred = pd.DataFrame(x_pred, columns=feature_cols)
     probabilities = model.predict_proba(x_pred)
 
-    return pl.DataFrame(
+    # The trainer encodes wins as class 0. Its independent per-runner scores do
+    # not necessarily sum to one. Normalize them within each race, preserving
+    # the within-race ordering. Older schemas and generic classifiers keep
+    # their original output.
+    if (
+        probabilities.shape[1] == 2
+        and "race_id" in df.columns
+        and getattr(model, "_umabozu_feature_schema_version", None)
+        == FEATURE_SCHEMA_VERSION
+    ):
+        win_probabilities = normalize_win_probabilities(
+            probabilities[:, 0], df.get_column("race_id")
+        )
+        probabilities = np.column_stack((win_probabilities, 1.0 - win_probabilities))
+
+    probabilities_df = pl.DataFrame(
         probabilities,
         schema={f"proba_{i}": pl.Float64 for i in range(probabilities.shape[1])},
     )
+
+    return probabilities_df
 
 
 def attach_win_probability(

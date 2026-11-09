@@ -4,6 +4,7 @@ from typing import Any
 
 import polars as pl
 
+from umabozu.config import DEFAULT_MIN_WIN_PROBABILITY
 from umabozu.models.predictor import (
     attach_win_probability,
     load_model,
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def select_bets_by_probability(
     predictions: pl.DataFrame,
-    min_probability: float = 0.13,
+    min_probability: float = DEFAULT_MIN_WIN_PROBABILITY,
     max_bets_per_race: int = 1,
 ) -> pl.DataFrame:
     """Select at most the highest-probability horses per race, without odds."""
@@ -143,7 +144,9 @@ if __name__ == "__main__":
     # --- Task: Simulate Betting and Calculate Payout ---
     logger.info("\nSimulating betting...")
     selected_bets = select_bets_by_probability(
-        predictions, min_probability=0.13, max_bets_per_race=1
+        predictions,
+        min_probability=DEFAULT_MIN_WIN_PROBABILITY,
+        max_bets_per_race=1,
     )
 
     investment, payout, recovery_rate = calculate_payout(selected_bets)

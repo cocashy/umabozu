@@ -1,10 +1,12 @@
 import logging
+import math
 import sys
 from typing import Any
 
 import optuna
 import polars as pl
 
+from umabozu.config import MIN_STRATEGY_RACE_COVERAGE
 from umabozu.data_preprocessing.data_loader import load_data_from_db
 from umabozu.data_preprocessing.feature_engineer import (
     generate_features,
@@ -26,17 +28,22 @@ def optimize_betting_strategy(
     validation_df: pl.DataFrame,
     feature_cols: list[str],
     n_trials: int = 100,
+    minimum_race_coverage: float = MIN_STRATEGY_RACE_COVERAGE,
 ) -> tuple[float, float]:
-    """Tune only a minimum win-probability threshold on validation data.
+    """Tune the probability threshold while preserving validation bet coverage.
 
     Final odds are used by ``calculate_payout`` only to score the completed
     historical bets. They are never passed to the selector.
     """
+    if not 0.0 < minimum_race_coverage <= 1.0:
+        raise ValueError("minimum_race_coverage must be between 0.0 and 1.0.")
+
     logger.info("Tuning the minimum win-probability threshold...")
 
     probabilities = predict_probabilities(model, validation_df, feature_cols)
     predictions = attach_win_probability(validation_df, probabilities)
-    minimum_bets = max(100, int(validation_df["race_id"].n_unique() * 0.05))
+    validation_races = validation_df["race_id"].n_unique()
+    minimum_bets = max(100, math.ceil(validation_races * minimum_race_coverage))
 
     def objective(trial):
         min_probability = trial.suggest_float("min_probability", 0.0, 0.5)
@@ -61,11 +68,19 @@ def optimize_betting_strategy(
     if best_trial_value is None:
         raise RuntimeError("Threshold optimization did not produce an objective value.")
     best_validation_roi = float(best_trial_value)
+    best_bets = select_bets_by_probability(
+        predictions,
+        min_probability=best_threshold,
+        max_bets_per_race=1,
+    )
+    best_coverage = len(best_bets) / validation_races if validation_races else 0.0
     logger.info(
         "Threshold tuning finished: minimum win probability %.3f; "
-        "validation ROI %.2f%%",
+        "validation ROI %.2f%%; bet coverage %.2f%% (minimum %.2f%%)",
         best_threshold,
         best_validation_roi,
+        best_coverage * 100,
+        minimum_race_coverage * 100,
     )
     return best_threshold, best_validation_roi
 
