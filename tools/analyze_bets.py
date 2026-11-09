@@ -7,6 +7,7 @@ import joblib
 import polars as pl
 from sklearn.base import BaseEstimator
 
+from umabozu.config import DEFAULT_MIN_WIN_PROBABILITY
 from umabozu.data_preprocessing.data_loader import load_data_from_db
 from umabozu.data_preprocessing.feature_engineer import (
     generate_features,
@@ -38,7 +39,12 @@ def analyze_model_behavior(
     predictions = attach_win_probability(test_df, probas_df)
 
     # Use the same cutoff as live forecasts; odds are not a selection input.
-    min_probability = float(os.getenv("UMABOZU_MIN_WIN_PROBABILITY", "0.13"))
+    min_probability = float(
+        os.getenv(
+            "UMABOZU_MIN_WIN_PROBABILITY",
+            str(DEFAULT_MIN_WIN_PROBABILITY),
+        )
+    )
     simulated_bets = select_bets_by_probability(
         predictions, min_probability=min_probability, max_bets_per_race=1
     )

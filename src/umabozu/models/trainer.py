@@ -4,11 +4,14 @@ import sys
 from typing import Any
 
 import lightgbm as lgb
+import numpy as np
 import optuna
 import pandas as pd
 import polars as pl
 from sklearn.metrics import log_loss
 from sklearn.model_selection import TimeSeriesSplit
+
+from umabozu.models.predictor import normalize_win_probabilities
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -48,6 +51,8 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
 
         if "race_date" not in df.columns:
             raise ValueError("Time-series optimization requires a race_date column.")
+        if "race_id" not in df.columns:
+            raise ValueError("Win probability optimization requires a race_id column.")
         if df.get_column("race_date").null_count():
             raise ValueError("Time-series optimization requires non-null race dates.")
 
@@ -55,6 +60,7 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
             df.select("race_date").unique().sort("race_date").to_series().to_list()
         )
         row_dates = df.get_column("race_date").to_list()
+        row_race_ids = df.get_column("race_id").to_list()
         date_splits = []
         # Split the ordered date list so all runners and races on a date remain
         # in the same fold.
@@ -105,6 +111,15 @@ def train_model(df: pl.DataFrame, optimize: bool = True, n_trials: int = 50) -> 
                     callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)],
                 )
                 preds = model.predict_proba(x_val)
+                normalized_win_probabilities = normalize_win_probabilities(
+                    preds[:, 0], [row_race_ids[i] for i in val_idx]
+                )
+                preds = np.column_stack(
+                    (
+                        normalized_win_probabilities,
+                        1.0 - normalized_win_probabilities,
+                    )
+                )
                 logloss_scores.append(log_loss(y_val, preds, labels=[0, 1]))
 
             return sum(logloss_scores) / len(logloss_scores)

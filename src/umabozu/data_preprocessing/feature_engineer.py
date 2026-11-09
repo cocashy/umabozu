@@ -1,6 +1,6 @@
 import polars as pl
 
-FEATURE_SCHEMA_VERSION = 4
+FEATURE_SCHEMA_VERSION = 5
 
 
 def _add_prior_result_features(
@@ -8,8 +8,9 @@ def _add_prior_result_features(
     entity_id_col: str,
     feature_prefix: str,
     row_index_col: str,
+    condition_col: str | None = None,
 ) -> pl.DataFrame:
-    """Add date-safe historical results for jockeys, trainers, or similar IDs."""
+    """Add date-safe historical results, optionally within a race condition."""
     starts_col = f"{feature_prefix}_prior_starts"
     win_rate_col = f"{feature_prefix}_prior_win_rate"
     top3_rate_col = f"{feature_prefix}_prior_top3_rate"
@@ -45,24 +46,33 @@ def _add_prior_result_features(
         .alias(key_col)
     )
 
+    group_cols = [key_col, "race_date"]
+    partition_cols = [key_col]
+    if condition_col is not None:
+        group_cols.append(condition_col)
+        partition_cols.append(condition_col)
+
     entity_daily = (
-        df.group_by([key_col, "race_date"])
+        df.group_by(group_cols)
         .agg(
             pl.len().alias(day_starts_col),
             pl.col("__history_win").sum().alias(day_wins_col),
             pl.col("__history_top3").sum().alias(day_top3_col),
         )
-        .sort([key_col, "race_date"], maintain_order=True)
+        .sort(group_cols, maintain_order=True)
         .with_columns(
             (
-                pl.col(day_starts_col).cum_sum().over(key_col) - pl.col(day_starts_col)
+                pl.col(day_starts_col).cum_sum().over(partition_cols)
+                - pl.col(day_starts_col)
             ).alias(starts_col),
-            (pl.col(day_wins_col).cum_sum().over(key_col) - pl.col(day_wins_col)).alias(
-                prior_wins_col
-            ),
-            (pl.col(day_top3_col).cum_sum().over(key_col) - pl.col(day_top3_col)).alias(
-                prior_top3_col
-            ),
+            (
+                pl.col(day_wins_col).cum_sum().over(partition_cols)
+                - pl.col(day_wins_col)
+            ).alias(prior_wins_col),
+            (
+                pl.col(day_top3_col).cum_sum().over(partition_cols)
+                - pl.col(day_top3_col)
+            ).alias(prior_top3_col),
         )
         .with_columns(
             ((pl.col(prior_wins_col) + 1.0) / (pl.col(starts_col) + 12.0)).alias(
@@ -72,9 +82,17 @@ def _add_prior_result_features(
                 top3_rate_col
             ),
         )
-        .select([key_col, "race_date", *feature_cols])
+        .select([*group_cols, *feature_cols])
     )
-    return df.join(entity_daily, on=[key_col, "race_date"], how="left").drop(key_col)
+    return (
+        df.join(entity_daily, on=group_cols, how="left")
+        .with_columns(
+            pl.col(starts_col).fill_null(0.0),
+            pl.col(win_rate_col).fill_null(1.0 / 12.0),
+            pl.col(top3_rate_col).fill_null(1.0 / 3.0),
+        )
+        .drop(key_col)
+    )
 
 
 def generate_features(df: pl.DataFrame) -> pl.DataFrame:
@@ -262,6 +280,33 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
 
         # Exclude same-day results so a card predicted in advance cannot use
         # outcomes from an earlier race on that card.
+        surface_cols = sorted(
+            col for col in df.columns if col.startswith("course_type_")
+        )
+        if "course_type" in df.columns:
+            surface_condition_col = "course_type"
+        elif surface_cols:
+            surface_expr = pl.lit(0, dtype=pl.Int64)
+            for index, col in enumerate(surface_cols, start=1):
+                surface_expr = (
+                    pl.when(pl.col(col).cast(pl.Int64, strict=False) > 0)
+                    .then(pl.lit(index))
+                    .otherwise(surface_expr)
+                )
+            surface_condition_col = "__surface_context"
+            df = df.with_columns(surface_expr.alias(surface_condition_col))
+        else:
+            surface_condition_col = None
+
+        if surface_condition_col is not None:
+            df = _add_prior_result_features(
+                df,
+                history_key_col,
+                "horse_surface",
+                row_index_col,
+                condition_col=surface_condition_col,
+            )
+
         df = _add_prior_result_features(df, "jockey_id", "jockey", row_index_col)
         df = _add_prior_result_features(df, "trainer_id", "trainer", row_index_col)
 
@@ -277,7 +322,10 @@ def generate_features(df: pl.DataFrame) -> pl.DataFrame:
 
     # Fill any NaN values that result from rolling calculations
     # (e.g., for first few races)
-    return df.drop([row_index_col, history_key_col]).fill_null(0)
+    internal_cols = [row_index_col, history_key_col]
+    if "__surface_context" in df.columns:
+        internal_cols.append("__surface_context")
+    return df.drop(internal_cols).fill_null(0)
 
 
 def get_feature_cols(df: pl.DataFrame | None = None) -> list[str]:
@@ -304,6 +352,9 @@ def get_feature_cols(df: pl.DataFrame | None = None) -> list[str]:
         "horse_prior_win_rate",
         "horse_prior_top3_rate",
         "horse_prior_avg_rank",
+        "horse_surface_prior_starts",
+        "horse_surface_prior_win_rate",
+        "horse_surface_prior_top3_rate",
         "horse_last_rank",
         "horse_days_since_last",
         "horse_distance_change",
