@@ -89,12 +89,10 @@ def predict_probabilities(
         )
         probabilities = np.column_stack((win_probabilities, 1.0 - win_probabilities))
 
-    probabilities_df = pl.DataFrame(
+    return pl.DataFrame(
         probabilities,
         schema={f"proba_{i}": pl.Float64 for i in range(probabilities.shape[1])},
     )
-
-    return probabilities_df
 
 
 def attach_win_probability(
